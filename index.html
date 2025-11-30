@@ -1,0 +1,679 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pill Time Reminder</title>
+    <!-- Load Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Load Inter font -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
+    
+    <!-- PWA MANIFEST and ICON SETUP -->
+    <!-- These files are required for the "Install App" prompt on Android -->
+    <link rel="manifest" href="/manifest.json">
+    <meta name="theme-color" content="#8B5CF6">
+    <link rel="apple-touch-icon" href="https://placehold.co/192x192/8B5CF6/ffffff?text=Pill">
+
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f0f4f8; /* Soft light blue/gray */
+        }
+        .app-container {
+            max-width: 420px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+        }
+        .reminder-card {
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+            transition: all 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275); /* Springy transition */
+        }
+        .reminder-card:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 8px 15px rgba(0, 0, 0, 0.1);
+        }
+        /* Style for the weekly summary tiles */
+        .weekly-tile {
+            cursor: pointer;
+            transition: all 0.2s;
+            border: 1px solid transparent;
+        }
+        .weekly-tile:not(.active):hover {
+            background-color: #eef2ff; /* light purple-50 */
+            border-color: #c7d2fe; /* light purple-300 */
+        }
+        .weekly-tile.active {
+            background-color: #8b5cf6; /* A more vibrant, modern purple */
+            color: white;
+            transform: scale(1.05);
+            box-shadow: 0 6px 10px -3px rgba(139, 92, 246, 0.5); /* Purple shadow */
+        }
+        .weekly-tile.active .text-gray-500,
+        .weekly-tile.active .pill-count {
+            color: white !important;
+        }
+        .pill-count {
+             transition: background-color 0.2s;
+        }
+        /* Custom scrollbar for better mobile feel */
+        #reminder-list::-webkit-scrollbar {
+            width: 6px;
+        }
+        #reminder-list::-webkit-scrollbar-thumb {
+            background-color: #c5c5c5;
+            border-radius: 10px;
+        }
+    </style>
+</head>
+<body class="min-h-screen flex items-center justify-center p-4">
+
+    <div class="w-full bg-white rounded-2xl p-6 space-y-6 app-container">
+        <header class="text-center">
+            <h1 class="text-3xl font-extrabold text-purple-700 mb-1">Pill Time 💊</h1>
+            <p class="text-sm text-gray-500">Your scheduled medicine intake</p>
+            <p id="user-id-display" class="text-xs text-gray-300 mt-2">Loading user...</p>
+        </header>
+
+        <!-- Loading Indicator -->
+        <div id="loading" class="text-center text-purple-500 font-medium hidden">
+            <div class="flex items-center justify-center space-x-2">
+                <svg class="animate-spin h-5 w-5 text-purple-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                <span>Loading schedule...</span>
+            </div>
+        </div>
+
+        <!-- Weekly Schedule At-a-Glance -->
+        <section class="bg-gray-50 p-3 rounded-xl shadow-inner">
+            <h2 class="text-lg font-semibold text-gray-700 mb-3">Weekly At-a-Glance</h2>
+            <div id="weekly-summary" class="grid grid-cols-7 gap-2 overflow-x-auto">
+                <!-- Weekly tiles will be rendered here -->
+            </div>
+        </section>
+
+
+        <!-- Add Reminder Form -->
+        <form id="reminder-form" class="space-y-4 bg-white p-4 rounded-xl border border-gray-200 shadow-lg">
+            <h2 class="text-xl font-bold text-gray-700">Add New Intake</h2>
+            <div class="grid grid-cols-2 gap-3">
+                <div>
+                    <label for="medicine-name" class="block text-sm font-medium text-gray-600">Medicine Name</label>
+                    <input type="text" id="medicine-name" required placeholder="e.g., Vitamin C" class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-purple-500 focus:border-purple-500 sm:text-sm">
+                </div>
+                <div>
+                    <label for="intake-date" class="block text-sm font-medium text-gray-600">Date</label>
+                    <input type="date" id="intake-date" required class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-purple-500 focus:border-purple-500 sm:text-sm">
+                </div>
+            </div>
+            <div>
+                <label for="intake-time" class="block text-sm font-medium text-gray-600">Intake Time</label>
+                <!-- Time input for easy mobile selection -->
+                <input type="time" id="intake-time" required value="08:00" class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-purple-500 focus:border-purple-500 sm:text-sm">
+            </div>
+            <button type="submit" id="add-button" class="w-full flex justify-center py-2.5 px-4 border border-transparent rounded-lg shadow-md text-sm font-semibold text-white bg-purple-600 hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500 transition duration-150 ease-in-out">
+                Add Reminder
+            </button>
+        </form>
+
+        <!-- Detailed Reminder List for Selected Day -->
+        <section>
+            <h2 id="schedule-title" class="text-xl font-bold text-gray-700 mb-3">Schedule</h2>
+            <div id="reminder-list" class="space-y-3 max-h-80 overflow-y-auto p-1">
+                <!-- Reminders for the selected day will be rendered here -->
+                <p id="empty-state" class="text-center text-gray-400 py-4">Select a day above to view its schedule.</p>
+            </div>
+        </section>
+    </div>
+
+    <!-- Firebase SDKs -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { 
+            getAuth, 
+            signInAnonymously, 
+            signInWithCustomToken, 
+            onAuthStateChanged 
+        } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { 
+            getFirestore, 
+            collection, 
+            query, 
+            onSnapshot, 
+            addDoc, 
+            deleteDoc, 
+            doc,
+            where,
+            orderBy,
+            setLogLevel 
+        } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // Global variables provided by the environment
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
+        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+
+        // UI Elements
+        const loadingElement = document.getElementById('loading');
+        const reminderListElement = document.getElementById('reminder-list');
+        const emptyStateElement = document.getElementById('empty-state');
+        const userIdDisplay = document.getElementById('user-id-display');
+        const form = document.getElementById('reminder-form');
+        const addButton = document.getElementById('add-button');
+        const intakeDateInput = document.getElementById('intake-date');
+        const scheduleTitle = document.getElementById('schedule-title');
+        const weeklySummaryElement = document.getElementById('weekly-summary');
+
+        // Firebase instances
+        let db = null; // Set to null initially
+        let auth = null; // Set to null initially
+        let isFirebaseActive = false;
+        let userId = null;
+        let detailedUnsubscribe = null; // Listener for the detailed schedule list
+
+        // Local state
+        const takenStatus = {}; // { docId: true/false }
+        let currentScheduleDateString = null; // YYYY-MM-DD for the currently viewed detailed schedule
+
+        // --- Utility Functions ---
+
+        /**
+         * Converts a Date object to a YYYY-MM-DD string.
+         * @param {Date} date 
+         * @returns {string}
+         */
+        const formatDateString = (date) => {
+            return date.toISOString().split('T')[0];
+        };
+
+        /**
+         * Converts a Date object to a Day Name (e.g., 'Mon', 'Tue').
+         * @param {Date} date 
+         * @returns {string}
+         */
+        const formatDayName = (date) => {
+            return date.toLocaleDateString('en-US', { weekday: 'short' });
+        };
+        
+        /**
+         * Gets the current time in HH:MM (24-hour) format.
+         * @returns {string}
+         */
+        const getCurrentTimeHHMM = () => {
+            const now = new Date();
+            const hours = String(now.getHours()).padStart(2, '0');
+            const minutes = String(now.getMinutes()).padStart(2, '0');
+            return `${hours}:${minutes}`;
+        };
+
+        /**
+         * Sets the schedule date and triggers the detailed view reload.
+         * @param {string} dateString - YYYY-MM-DD
+         */
+        const setDetailedScheduleDate = (dateString) => {
+            currentScheduleDateString = dateString;
+            // Format the title nicely for the user
+            const date = new Date(dateString);
+            const formattedDate = date.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+            scheduleTitle.textContent = `Schedule for ${formattedDate}`;
+
+            loadDetailedReminders();
+            
+            // Highlight the active tile in the weekly summary
+            document.querySelectorAll('.weekly-tile').forEach(tile => {
+                if (tile.getAttribute('data-date') === dateString) {
+                    tile.classList.add('active');
+                } else {
+                    tile.classList.remove('active');
+                }
+            });
+        };
+
+        /**
+         * Shows the loading indicator.
+         */
+        const showLoading = () => {
+            loadingElement.classList.remove('hidden');
+            addButton.disabled = true;
+        };
+
+        /**
+         * Hides the loading indicator.
+         */
+        const hideLoading = () => {
+            loadingElement.classList.add('hidden');
+            addButton.disabled = false;
+        };
+
+        // --- Firebase Setup and Authentication ---
+
+        /**
+         * Initializes Firebase and handles authentication.
+         */
+        async function setupFirebase() {
+            try {
+                showLoading();
+                setLogLevel('Debug'); 
+                
+                // For debugging: log the configuration received
+                console.log("Firebase Config Received:", firebaseConfig);
+
+                if (Object.keys(firebaseConfig).length === 0) {
+                    // Gracefully handle missing/empty configuration
+                    console.error("FIREBASE WARNING: Configuration is empty. Data saving/loading will be disabled.");
+                    userIdDisplay.textContent = 'Data Saving Disabled: Missing Config';
+                    // Set a dummy user ID to allow UI to render (but no Firestore calls will proceed)
+                    userId = 'offline_mode_user'; 
+                    isFirebaseActive = false;
+
+                    // Proceed to UI initialization (which depends on userId and the date)
+                    intakeDateInput.value = formatDateString(new Date());
+                    setDetailedScheduleDate(formatDateString(new Date()));
+                    renderWeeklySummary({}); // Render empty summary
+                    
+                    hideLoading();
+                    return; // Stop initialization here
+                }
+
+                isFirebaseActive = true;
+                
+                // Initialize the intake date in the form to today
+                intakeDateInput.value = formatDateString(new Date());
+
+                const app = initializeApp(firebaseConfig);
+                auth = getAuth(app);
+                db = getFirestore(app);
+
+                onAuthStateChanged(auth, async (user) => {
+                    if (user) {
+                        userId = user.uid;
+                        userIdDisplay.textContent = `User ID: ${userId}`;
+                        
+                        // Set the initial detailed view to today
+                        setDetailedScheduleDate(formatDateString(new Date()));
+                        loadWeeklySummary(); // Start listening for weekly data
+                        hideLoading();
+                    } else {
+                        // Attempt sign in
+                        if (initialAuthToken) {
+                            await signInWithCustomToken(auth, initialAuthToken);
+                        } else {
+                            await signInAnonymously(auth);
+                        }
+                    }
+                });
+
+            } catch (error) {
+                console.error("Firebase setup or authentication failed:", error);
+                
+                let message = 'Auth Failed! Check console for details.';
+                if (error.code && error.code.includes("invalid-api-key")) {
+                    message = 'Setup Error: Invalid/Missing Firebase Config. (Check console)';
+                }
+                
+                userIdDisplay.textContent = message;
+                hideLoading();
+            }
+        }
+
+        /**
+         * Gets the reference to the user's reminders collection in Firestore.
+         * @returns {object|null} The Firestore Collection Reference or null if not active.
+         */
+        const getRemindersCollectionRef = () => {
+            if (!isFirebaseActive || !db || !userId || userId === 'offline_mode_user') {
+                console.warn("Attempted Firestore operation while Firebase is not active or user is offline.");
+                return null;
+            }
+            // Private path: /artifacts/{appId}/users/{userId}/reminders
+            return collection(db, `artifacts/${appId}/users/${userId}/reminders`);
+        }
+
+        // --- Data Operations ---
+
+        /**
+         * Adds a new reminder to Firestore.
+         * @param {string} name - Medicine name.
+         * @param {string} date - Intake date (YYYY-MM-DD).
+         * @param {string} time - Intake time (HH:MM).
+         */
+        const addReminder = async (name, date, time) => {
+            const collectionRef = getRemindersCollectionRef();
+            if (!collectionRef) {
+                // Display error message
+                const errorMessage = 'Cannot save data: Firebase connection failed due to missing configuration.';
+                console.error(errorMessage);
+                userIdDisplay.textContent = errorMessage; 
+                return;
+            }
+
+            try {
+                addButton.textContent = 'Saving...';
+                addButton.disabled = true;
+
+                await addDoc(collectionRef, {
+                    name: name,
+                    date: date, // YYYY-MM-DD
+                    time: time, // HH:MM
+                    created_at: new Date().toISOString(), 
+                });
+
+                document.getElementById('medicine-name').value = '';
+                document.getElementById('intake-time').value = '08:00'; // Reset time to default
+            } catch (error) {
+                console.error("Error adding reminder:", error);
+                // Display error message
+                userIdDisplay.textContent = 'Error saving reminder. Check console.';
+            } finally {
+                addButton.textContent = 'Add Reminder';
+                addButton.disabled = false;
+            }
+        };
+
+        /**
+         * Deletes a reminder from Firestore.
+         * @param {string} docId - The Firestore document ID to delete.
+         */
+        const deleteReminder = async (docId) => {
+            const collectionRef = getRemindersCollectionRef();
+            if (!collectionRef) return;
+
+            try {
+                await deleteDoc(doc(collectionRef, docId));
+                delete takenStatus[docId];
+            } catch (error) {
+                console.error("Error deleting reminder:", error);
+            }
+        };
+
+        // --- Weekly Summary Logic ---
+
+        /**
+         * Sets up the real-time listener for the next 7 days of reminders.
+         */
+        const loadWeeklySummary = () => {
+            const collectionRef = getRemindersCollectionRef();
+            if (!collectionRef) return;
+
+            const today = new Date();
+            const startDateString = formatDateString(today);
+
+            const endDate = new Date();
+            endDate.setDate(today.getDate() + 6); // Look 7 days ahead (today + 6)
+            const endDateString = formatDateString(endDate);
+            
+            // Query for all reminders in the next 7 days.
+            const q = query(
+                collectionRef,
+                where("date", ">=", startDateString),
+                where("date", "<=", endDateString)
+            );
+
+            onSnapshot(q, (snapshot) => {
+                const allReminders = [];
+                snapshot.forEach((doc) => {
+                    allReminders.push({ id: doc.id, ...doc.data() });
+                });
+
+                // Group and count client-side
+                const weeklyReminders = {}; // { 'YYYY-MM-DD': [{...}, {...}] }
+                
+                allReminders.forEach((data) => {
+                    const dateKey = data.date;
+                    if (!weeklyReminders[dateKey]) {
+                        weeklyReminders[dateKey] = [];
+                    }
+                    weeklyReminders[dateKey].push(data);
+                });
+                
+                renderWeeklySummary(weeklyReminders);
+
+            }, (error) => {
+                console.error("Error listening to weekly summary:", error);
+            });
+        };
+        
+        /**
+         * Renders the weekly schedule tiles.
+         * @param {Object} remindersByDate - Reminders grouped by date string.
+         */
+        const renderWeeklySummary = (remindersByDate) => {
+            weeklySummaryElement.innerHTML = '';
+            const today = new Date();
+            const todayString = formatDateString(today);
+
+            for (let i = 0; i < 7; i++) {
+                const date = new Date(today);
+                date.setDate(today.getDate() + i);
+                const dateString = formatDateString(date);
+                const dayName = formatDayName(date);
+                const count = remindersByDate[dateString] ? remindersByDate[dateString].length : 0;
+                
+                let dayLabel = dayName;
+                if (i === 0) dayLabel = 'Today';
+                if (i === 1) dayLabel = 'Tmrw';
+
+                const isActive = currentScheduleDateString === dateString;
+                const activeClass = isActive ? 'active' : '';
+
+                const tile = document.createElement('div');
+                tile.className = `weekly-tile flex flex-col items-center p-2 rounded-xl text-xs font-medium ${activeClass} bg-white border border-gray-200`;
+                tile.setAttribute('data-date', dateString);
+                tile.onclick = () => setDetailedScheduleDate(dateString);
+
+                tile.innerHTML = `
+                    <span class="text-xs ${isActive ? 'text-white' : 'text-gray-500'}">${dayLabel}</span>
+                    <span class="text-lg font-extrabold mt-0.5">${date.getDate()}</span>
+                    <span class="pill-count mt-1 px-2 py-0.5 rounded-full text-white text-xs font-bold ${count > 0 ? 'bg-purple-500' : 'bg-gray-300'}">
+                        ${count}
+                    </span>
+                `;
+                weeklySummaryElement.appendChild(tile);
+            }
+        };
+
+
+        // --- Detailed Schedule Logic ---
+
+        /**
+         * Sets up the real-time listener for the detailed reminders list for the selected day.
+         */
+        const loadDetailedReminders = () => {
+            // Stop previous listener if it exists
+            if (detailedUnsubscribe) {
+                detailedUnsubscribe();
+            }
+
+            if (!currentScheduleDateString) return;
+            
+            const collectionRef = getRemindersCollectionRef();
+            
+            // If Firebase is not active, display offline mode warning and stop.
+            if (!collectionRef && !isFirebaseActive) {
+                reminderListElement.innerHTML = `<p class="text-center text-red-500 py-4">Cannot load schedule. Firebase is offline due to missing configuration.</p>`;
+                return;
+            }
+            if (!collectionRef) return; // Should only happen if not active, but just in case.
+
+
+            // Query for reminders on the selected date. 
+            const q = query(
+                collectionRef, 
+                where("date", "==", currentScheduleDateString)
+            );
+
+            detailedUnsubscribe = onSnapshot(q, (snapshot) => {
+                const reminders = [];
+                snapshot.forEach((doc) => {
+                    reminders.push({ id: doc.id, ...doc.data() });
+                });
+                
+                // === SORTING LOGIC: Prioritize Upcoming for Today ===
+                reminders.sort((a, b) => {
+                    const isToday = currentScheduleDateString === formatDateString(new Date());
+                    const nowTime = getCurrentTimeHHMM();
+
+                    const isPastA = a.time <= nowTime;
+                    const isPastB = b.time <= nowTime;
+
+                    const isTakenA = takenStatus[a.id];
+                    const isTakenB = takenStatus[b.id];
+                    
+                    // Priority Score (1=High, 0=Low). Only applies to today.
+                    // High Priority is: (Not Past AND Not Taken)
+                    let priorityA = 0;
+                    let priorityB = 0;
+
+                    if (isToday) {
+                        // Check if upcoming/due now and NOT taken
+                        if (!isPastA && !isTakenA) {
+                            priorityA = 1; 
+                        }
+                        if (!isPastB && !isTakenB) {
+                            priorityB = 1; 
+                        }
+                    }
+
+                    // Primary sort by priority (1 before 0)
+                    const prioritySort = priorityB - priorityA; 
+                    if (prioritySort !== 0) {
+                        return prioritySort;
+                    }
+                    
+                    // Secondary sort: by time (earlier time comes first)
+                    return a.time.localeCompare(b.time);
+                });
+                // === END SORTING LOGIC ===
+
+                renderDetailedReminders(reminders);
+            }, (error) => {
+                console.error("Error listening to detailed reminders:", error);
+                reminderListElement.innerHTML = `<p class="text-center text-red-500 py-4">Failed to load schedule. (Check console for details)</p>`;
+            });
+        };
+
+        /**
+         * Renders the detailed list of reminders to the DOM.
+         * @param {Array<Object>} reminders - The array of reminder objects.
+         */
+        const renderDetailedReminders = (reminders) => {
+            reminderListElement.innerHTML = '';
+            
+            if (reminders.length === 0) {
+                emptyStateElement.classList.remove('hidden');
+                reminderListElement.appendChild(emptyStateElement);
+                return;
+            }
+
+            emptyStateElement.classList.add('hidden');
+
+            reminders.forEach(reminder => {
+                const docId = reminder.id;
+                const isTaken = takenStatus[docId] || false;
+                const isToday = currentScheduleDateString === formatDateString(new Date());
+                const isPast = isToday && reminder.time <= getCurrentTimeHHMM() && !isTaken;
+
+                let cardClass = 'bg-white border-l-purple-400';
+                let timeClass = 'text-purple-500';
+
+                if (isTaken) {
+                    cardClass = 'bg-green-50 border-l-green-400 opacity-80';
+                    timeClass = 'text-green-600';
+                } else if (isPast) {
+                    cardClass = 'bg-red-50 border-l-red-400';
+                    timeClass = 'text-red-500 font-bold';
+                }
+                
+                const takenText = isTaken ? 'Taken!' : 'Mark as Taken';
+
+
+                const reminderCard = document.createElement('div');
+                reminderCard.className = `reminder-card flex items-center justify-between p-4 border-l-4 rounded-xl ${cardClass}`;
+                reminderCard.setAttribute('data-id', docId);
+
+                // Content area
+                const contentDiv = document.createElement('div');
+                contentDiv.className = 'flex-grow';
+                contentDiv.innerHTML = `
+                    <p class="text-lg font-semibold text-gray-800">${reminder.name}</p>
+                    <p class="text-sm ${timeClass} font-mono mt-0.5">${reminder.time} ${isPast ? '(Overdue)' : ''}</p>
+                `;
+
+                // Actions area
+                const actionsDiv = document.createElement('div');
+                actionsDiv.className = 'flex items-center space-x-2 ml-4';
+
+                // Mark as Taken Button
+                const takeButton = document.createElement('button');
+                takeButton.textContent = takenText;
+                takeButton.className = `px-3 py-1 text-xs font-semibold rounded-full shadow-sm transition-colors ${isTaken 
+                    ? 'bg-green-500 text-white hover:bg-green-600' 
+                    : 'bg-purple-100 text-purple-700 hover:bg-purple-200'}`;
+                takeButton.onclick = () => {
+                    // Toggle local state
+                    takenStatus[docId] = !isTaken;
+                    // Re-render the list to update the card's appearance
+                    loadDetailedReminders(); // Re-fetch/re-sort to maintain order
+                };
+
+                // Delete Button
+                const deleteButton = document.createElement('button');
+                deleteButton.innerHTML = `
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-red-400 hover:text-red-600 transition" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                    </svg>
+                `;
+                deleteButton.title = 'Delete Reminder';
+                deleteButton.onclick = () => deleteReminder(docId);
+
+                actionsDiv.appendChild(takeButton);
+                actionsDiv.appendChild(deleteButton);
+                
+                reminderCard.appendChild(contentDiv);
+                reminderCard.appendChild(actionsDiv);
+                
+                reminderListElement.appendChild(reminderCard);
+            });
+        };
+        
+        // --- PWA Service Worker Registration ---
+        const registerServiceWorker = () => {
+            if ('serviceWorker' in navigator) {
+                window.addEventListener('load', () => {
+                    // The path needs to be correct relative to where the file is hosted.
+                    // Assuming service-worker.js is in the same root directory.
+                    navigator.serviceWorker.register('./service-worker.js', { scope: './' })
+                        .then(registration => {
+                            console.log('ServiceWorker registration successful with scope: ', registration.scope);
+                        })
+                        .catch(error => {
+                            console.log('ServiceWorker registration failed: ', error);
+                        });
+                });
+            }
+        };
+
+
+        // --- Event Listeners ---
+
+        form.addEventListener('submit', (e) => {
+            e.preventDefault();
+            const name = document.getElementById('medicine-name').value.trim();
+            const date = document.getElementById('intake-date').value;
+            const time = document.getElementById('intake-time').value;
+
+            if (name && date && time) {
+                addReminder(name, date, time);
+            }
+        });
+
+        // --- Start Application ---
+        document.addEventListener('DOMContentLoaded', () => {
+            setupFirebase();
+            registerServiceWorker(); // Register PWA components
+        });
+
+    </script>
+</body>
+</html>
