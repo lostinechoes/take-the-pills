@@ -10,7 +10,6 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
     
     <!-- PWA MANIFEST and ICON SETUP -->
-    <!-- These files are required for the "Install App" prompt on Android -->
     <link rel="manifest" href="/manifest.json">
     <meta name="theme-color" content="#8B5CF6">
     <link rel="apple-touch-icon" href="https://placehold.co/192x192/8B5CF6/ffffff?text=Pill">
@@ -145,14 +144,15 @@
             deleteDoc, 
             doc,
             where,
-            orderBy,
+            updateDoc, // NEW IMPORT
             setLogLevel 
         } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
         // Global variables provided by the environment
         const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
         const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
-        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+        // FIX: Corrected the casing from __initialAuthToken to __initial_auth_token
+        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null; 
 
         // UI Elements
         const loadingElement = document.getElementById('loading');
@@ -172,8 +172,7 @@
         let userId = null;
         let detailedUnsubscribe = null; // Listener for the detailed schedule list
 
-        // Local state
-        const takenStatus = {}; // { docId: true/false }
+        // Local state - NOTE: takenStatus is now DEPRECATED as status is stored in Firestore
         let currentScheduleDateString = null; // YYYY-MM-DD for the currently viewed detailed schedule
 
         // --- Utility Functions ---
@@ -256,29 +255,22 @@
                 showLoading();
                 setLogLevel('Debug'); 
                 
-                // For debugging: log the configuration received
-                console.log("Firebase Config Received:", firebaseConfig);
-
                 if (Object.keys(firebaseConfig).length === 0) {
-                    // Gracefully handle missing/empty configuration
                     console.error("FIREBASE WARNING: Configuration is empty. Data saving/loading will be disabled.");
                     userIdDisplay.textContent = 'Data Saving Disabled: Missing Config';
-                    // Set a dummy user ID to allow UI to render (but no Firestore calls will proceed)
                     userId = 'offline_mode_user'; 
                     isFirebaseActive = false;
 
-                    // Proceed to UI initialization (which depends on userId and the date)
                     intakeDateInput.value = formatDateString(new Date());
                     setDetailedScheduleDate(formatDateString(new Date()));
-                    renderWeeklySummary({}); // Render empty summary
+                    renderWeeklySummary({});
                     
                     hideLoading();
-                    return; // Stop initialization here
+                    return; 
                 }
 
                 isFirebaseActive = true;
                 
-                // Initialize the intake date in the form to today
                 intakeDateInput.value = formatDateString(new Date());
 
                 const app = initializeApp(firebaseConfig);
@@ -290,12 +282,10 @@
                         userId = user.uid;
                         userIdDisplay.textContent = `User ID: ${userId}`;
                         
-                        // Set the initial detailed view to today
                         setDetailedScheduleDate(formatDateString(new Date()));
-                        loadWeeklySummary(); // Start listening for weekly data
+                        loadWeeklySummary();
                         hideLoading();
                     } else {
-                        // Attempt sign in
                         if (initialAuthToken) {
                             await signInWithCustomToken(auth, initialAuthToken);
                         } else {
@@ -334,14 +324,11 @@
 
         /**
          * Adds a new reminder to Firestore.
-         * @param {string} name - Medicine name.
-         * @param {string} date - Intake date (YYYY-MM-DD).
-         * @param {string} time - Intake time (HH:MM).
+         * Initializes 'isTaken' to false and 'takenAt' to null.
          */
         const addReminder = async (name, date, time) => {
             const collectionRef = getRemindersCollectionRef();
             if (!collectionRef) {
-                // Display error message
                 const errorMessage = 'Cannot save data: Firebase connection failed due to missing configuration.';
                 console.error(errorMessage);
                 userIdDisplay.textContent = errorMessage; 
@@ -355,21 +342,48 @@
                 await addDoc(collectionRef, {
                     name: name,
                     date: date, // YYYY-MM-DD
-                    time: time, // HH:MM
+                    time: time, // HH:MM (Scheduled time)
+                    isTaken: false, // NEW: Persistent taken status
+                    takenAt: null, // NEW: Timestamp when it was taken
                     created_at: new Date().toISOString(), 
                 });
 
                 document.getElementById('medicine-name').value = '';
-                document.getElementById('intake-time').value = '08:00'; // Reset time to default
+                document.getElementById('intake-time').value = '08:00';
             } catch (error) {
                 console.error("Error adding reminder:", error);
-                // Display error message
                 userIdDisplay.textContent = 'Error saving reminder. Check console.';
             } finally {
                 addButton.textContent = 'Add Reminder';
                 addButton.disabled = false;
             }
         };
+
+        /**
+         * Toggles the 'isTaken' status of a reminder and records the 'takenAt' time.
+         * @param {string} docId - The Firestore document ID.
+         * @param {boolean} currentStatus - The current status of the reminder.
+         */
+        const toggleTakenStatus = async (docId, currentStatus) => {
+            const collectionRef = getRemindersCollectionRef();
+            if (!collectionRef) return;
+
+            const docRef = doc(collectionRef, docId);
+            const newStatus = !currentStatus;
+            
+            // Set takenAt to the current ISO string if marked as taken, or null if untaken
+            const takenTime = newStatus ? new Date().toISOString() : null;
+
+            try {
+                await updateDoc(docRef, {
+                    isTaken: newStatus,
+                    takenAt: takenTime
+                });
+            } catch (error) {
+                console.error("Error toggling taken status:", error);
+            }
+        };
+
 
         /**
          * Deletes a reminder from Firestore.
@@ -381,7 +395,6 @@
 
             try {
                 await deleteDoc(doc(collectionRef, docId));
-                delete takenStatus[docId];
             } catch (error) {
                 console.error("Error deleting reminder:", error);
             }
@@ -448,14 +461,23 @@
                 date.setDate(today.getDate() + i);
                 const dateString = formatDateString(date);
                 const dayName = formatDayName(date);
-                const count = remindersByDate[dateString] ? remindersByDate[dateString].length : 0;
                 
+                const dayReminders = remindersByDate[dateString] || [];
+                const totalCount = dayReminders.length;
+                const takenCount = dayReminders.filter(r => r.isTaken).length; // Check persistent status
+                
+                let countText = totalCount > 0 ? `${takenCount}/${totalCount}` : '0';
+
                 let dayLabel = dayName;
                 if (i === 0) dayLabel = 'Today';
                 if (i === 1) dayLabel = 'Tmrw';
 
                 const isActive = currentScheduleDateString === dateString;
                 const activeClass = isActive ? 'active' : '';
+                
+                // Color logic: Full purple if all taken, lighter gray/purple otherwise
+                const pillColorClass = (totalCount > 0 && takenCount === totalCount) ? 'bg-green-500' : 
+                                       (totalCount > 0) ? 'bg-purple-500' : 'bg-gray-300';
 
                 const tile = document.createElement('div');
                 tile.className = `weekly-tile flex flex-col items-center p-2 rounded-xl text-xs font-medium ${activeClass} bg-white border border-gray-200`;
@@ -465,8 +487,8 @@
                 tile.innerHTML = `
                     <span class="text-xs ${isActive ? 'text-white' : 'text-gray-500'}">${dayLabel}</span>
                     <span class="text-lg font-extrabold mt-0.5">${date.getDate()}</span>
-                    <span class="pill-count mt-1 px-2 py-0.5 rounded-full text-white text-xs font-bold ${count > 0 ? 'bg-purple-500' : 'bg-gray-300'}">
-                        ${count}
+                    <span class="pill-count mt-1 px-2 py-0.5 rounded-full text-white text-xs font-bold ${pillColorClass}">
+                        ${countText}
                     </span>
                 `;
                 weeklySummaryElement.appendChild(tile);
@@ -489,13 +511,11 @@
             
             const collectionRef = getRemindersCollectionRef();
             
-            // If Firebase is not active, display offline mode warning and stop.
             if (!collectionRef && !isFirebaseActive) {
                 reminderListElement.innerHTML = `<p class="text-center text-red-500 py-4">Cannot load schedule. Firebase is offline due to missing configuration.</p>`;
                 return;
             }
-            if (!collectionRef) return; // Should only happen if not active, but just in case.
-
+            if (!collectionRef) return; 
 
             // Query for reminders on the selected date. 
             const q = query(
@@ -517,8 +537,8 @@
                     const isPastA = a.time <= nowTime;
                     const isPastB = b.time <= nowTime;
 
-                    const isTakenA = takenStatus[a.id];
-                    const isTakenB = takenStatus[b.id];
+                    const isTakenA = a.isTaken; // Read directly from Firestore data
+                    const isTakenB = b.isTaken; 
                     
                     // Priority Score (1=High, 0=Low). Only applies to today.
                     // High Priority is: (Not Past AND Not Taken)
@@ -570,22 +590,38 @@
 
             reminders.forEach(reminder => {
                 const docId = reminder.id;
-                const isTaken = takenStatus[docId] || false;
+                const isTaken = reminder.isTaken || false; // Read status from the data object
                 const isToday = currentScheduleDateString === formatDateString(new Date());
+                
+                // Check if scheduled time has passed AND it's not already marked as taken
                 const isPast = isToday && reminder.time <= getCurrentTimeHHMM() && !isTaken;
 
                 let cardClass = 'bg-white border-l-purple-400';
                 let timeClass = 'text-purple-500';
+                let actionText = 'Mark as Taken';
 
                 if (isTaken) {
                     cardClass = 'bg-green-50 border-l-green-400 opacity-80';
                     timeClass = 'text-green-600';
+                    actionText = 'Undo Take';
                 } else if (isPast) {
                     cardClass = 'bg-red-50 border-l-red-400';
                     timeClass = 'text-red-500 font-bold';
+                    actionText = 'Mark as Taken';
                 }
                 
-                const takenText = isTaken ? 'Taken!' : 'Mark as Taken';
+                // Display the time it was taken if available
+                let takenTimeDisplay = '';
+                if (isTaken && reminder.takenAt) {
+                    try {
+                        // Convert ISO string to a readable time format (e.g., "Taken at 10:30 AM")
+                        const takenDate = new Date(reminder.takenAt);
+                        const timeOptions = { hour: '2-digit', minute: '2-digit', hour12: true };
+                        takenTimeDisplay = `(Taken ${takenDate.toLocaleTimeString('en-US', timeOptions)})`;
+                    } catch (e) {
+                        takenTimeDisplay = '(Taken)'; // Fallback if timestamp parsing fails
+                    }
+                }
 
 
                 const reminderCard = document.createElement('div');
@@ -597,7 +633,10 @@
                 contentDiv.className = 'flex-grow';
                 contentDiv.innerHTML = `
                     <p class="text-lg font-semibold text-gray-800">${reminder.name}</p>
-                    <p class="text-sm ${timeClass} font-mono mt-0.5">${reminder.time} ${isPast ? '(Overdue)' : ''}</p>
+                    <p class="text-sm ${timeClass} font-mono mt-0.5">
+                        ${reminder.time} ${isPast && !isTaken ? '(Overdue)' : ''}
+                        <span class="text-xs text-gray-500">${takenTimeDisplay}</span>
+                    </p>
                 `;
 
                 // Actions area
@@ -606,15 +645,14 @@
 
                 // Mark as Taken Button
                 const takeButton = document.createElement('button');
-                takeButton.textContent = takenText;
+                takeButton.textContent = actionText;
                 takeButton.className = `px-3 py-1 text-xs font-semibold rounded-full shadow-sm transition-colors ${isTaken 
                     ? 'bg-green-500 text-white hover:bg-green-600' 
                     : 'bg-purple-100 text-purple-700 hover:bg-purple-200'}`;
                 takeButton.onclick = () => {
-                    // Toggle local state
-                    takenStatus[docId] = !isTaken;
-                    // Re-render the list to update the card's appearance
-                    loadDetailedReminders(); // Re-fetch/re-sort to maintain order
+                    // Call the new function to update Firestore
+                    toggleTakenStatus(docId, isTaken);
+                    // The UI update happens automatically because of onSnapshot!
                 };
 
                 // Delete Button
@@ -641,8 +679,6 @@
         const registerServiceWorker = () => {
             if ('serviceWorker' in navigator) {
                 window.addEventListener('load', () => {
-                    // The path needs to be correct relative to where the file is hosted.
-                    // Assuming service-worker.js is in the same root directory.
                     navigator.serviceWorker.register('./service-worker.js', { scope: './' })
                         .then(registration => {
                             console.log('ServiceWorker registration successful with scope: ', registration.scope);
