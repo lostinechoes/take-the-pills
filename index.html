@@ -261,27 +261,28 @@
                     console.error("FIREBASE WARNING: Configuration is empty. Data saving/loading will be disabled.");
                     
                     // --- FIX: Handle missing config gracefully (disabling form/list) ---
-                    userIdDisplay.textContent = 'Data Saving Disabled: Missing Firebase Config';
                     userId = 'offline_mode_user'; 
                     isFirebaseActive = false;
-
                     intakeDateInput.value = formatDateString(new Date());
-                    setDetailedScheduleDate(formatDateString(new Date()));
-                    renderWeeklySummary({});
 
-                    // Set a simple, non-error message for the list
+                    // 1. Set the definitive static message for the list first
                     reminderListElement.innerHTML = `<p class="text-center text-gray-500 py-4">Firebase configuration is missing. Data saving is disabled.</p>`;
-                    
-                    // Disable the form elements
+
+                    // 2. Render the weekly summary (empty) and set the schedule date header.
+                    renderWeeklySummary({});
+                    setDetailedScheduleDate(formatDateString(new Date())); 
+
+                    // 3. Disable the form elements
                     document.getElementById('medicine-name').disabled = true;
                     document.getElementById('intake-date').disabled = true;
                     document.getElementById('intake-time').disabled = true;
                     addButton.textContent = 'Data Saving Disabled';
                     addButton.disabled = true;
                     
+                    // 4. Update status display and hide loader
+                    userIdDisplay.textContent = 'Data Saving Disabled: Missing Firebase Config';
                     hideLoading();
                     return; 
-                    // --- END FIX ---
                 }
 
                 isFirebaseActive = true;
@@ -339,14 +340,13 @@
 
         /**
          * Adds a new reminder to Firestore.
-         * Initializes 'isTaken' to false and 'takenAt' to null.
          */
         const addReminder = async (name, date, time) => {
             const collectionRef = getRemindersCollectionRef();
             if (!collectionRef) {
-                const errorMessage = 'Data Saving Disabled: Firebase configuration is missing.';
-                console.error(errorMessage);
-                userIdDisplay.textContent = errorMessage; 
+                const statusMessage = 'Data Saving Disabled: Configuration missing.';
+                console.error(statusMessage);
+                userIdDisplay.textContent = statusMessage; 
                 return;
             }
 
@@ -367,7 +367,7 @@
                 document.getElementById('intake-time').value = '08:00';
             } catch (error) {
                 console.error("Error adding reminder:", error);
-                userIdDisplay.textContent = 'Error saving reminder. Check console.';
+                userIdDisplay.textContent = 'Could not save reminder. Check console.';
             } finally {
                 addButton.textContent = 'Add Reminder';
                 addButton.disabled = false;
@@ -376,8 +376,6 @@
 
         /**
          * Toggles the 'isTaken' status of a reminder and records the 'takenAt' time.
-         * @param {string} docId - The Firestore document ID.
-         * @param {boolean} currentStatus - The current status of the reminder.
          */
         const toggleTakenStatus = async (docId, currentStatus) => {
             const collectionRef = getRemindersCollectionRef();
@@ -525,8 +523,7 @@
 
             if (!currentScheduleDateString) return;
             
-            // FIX: If Firebase is not active (i.e., config failed), exit gracefully. 
-            // The static error message is already set in setupFirebase.
+            // Guard: If Firebase is not active (i.e., config failed), exit gracefully. 
             if (!isFirebaseActive) {
                 return;
             }
@@ -696,7 +693,14 @@
         
         // --- PWA Service Worker Registration ---
         const registerServiceWorker = () => {
+            // Check if service workers are supported
             if ('serviceWorker' in navigator) {
+                // Check if we are in a valid environment (HTTP/HTTPS) to avoid blob/file protocol errors
+                if (window.location.protocol !== 'http:' && window.location.protocol !== 'https:') {
+                    console.warn('Service Workers are not supported in this environment (blob/file protocol). skipping registration.');
+                    return;
+                }
+
                 window.addEventListener('load', () => {
                     navigator.serviceWorker.register('./service-worker.js', { scope: './' })
                         .then(registration => {
