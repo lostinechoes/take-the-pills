@@ -82,6 +82,17 @@
             <h1 class="text-3xl font-extrabold text-purple-700 mb-1">Pill Time 💊</h1>
             <p class="text-sm text-gray-500">Your scheduled medicine intake</p>
             <p id="user-id-display" class="text-xs text-gray-300 mt-2">Authenticating user...</p>
+            
+            <!-- Google Sign-in Button (Visible only if anonymous/not permanently logged in) -->
+            <button id="google-login-btn" class="hidden mt-4 w-full flex items-center justify-center py-2 px-4 border border-gray-300 rounded-lg shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500 transition duration-150 ease-in-out">
+                <svg class="h-5 w-5 mr-2" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M21.35 12.04c0-.79-.07-1.54-.19-2.27H12v4.51h4.84c-.2 1.14-.84 2.1-1.74 2.74v2.54h3.28c1.92-1.77 3.03-4.38 3.03-7.72z" fill="#4285F4"/>
+                    <path d="M12 21c3.24 0 5.95-1.07 7.93-2.91l-3.28-2.54c-.9 0-2.07.65-2.65 1.76-1.55 1.48-3.4 2.45-5.65 2.45-3.15 0-5.83-2.01-6.79-4.71H2.03v2.54C3.89 19.92 7.63 21 12 21z" fill="#34A853"/>
+                    <path d="M5.21 15.69c-.2-.6-.31-1.23-.31-1.87s.11-1.27.31-1.87V9.41H2.03C1.3 11.04 1 12.52 1 14c0 1.48.3-2.96.9-4.59l3.28 2.27z" fill="#FBBC05"/>
+                    <path d="M12 7.73c1.77 0 3.32.61 4.54 1.78l2.94-2.94C17.95 3.19 15.24 2 12 2 7.63 2 3.89 3.08 2.03 4.41l3.18 2.32C6.17 6.72 8.85 7.73 12 7.73z" fill="#EA4335"/>
+                </svg>
+                Sign In with Google (Save Data)
+            </button>
         </header>
 
         <!-- Loading Indicator -->
@@ -139,12 +150,14 @@
 
     <!-- Firebase SDKs -->
     <script type="module">
-        // UPGRADING Firebase SDKs to v12.6.0
         import { initializeApp } from "https://www.gstatic.com/firebasejs/12.6.0/firebase-app.js";
         import { 
             getAuth, 
             signInAnonymously,
-            signInWithCustomToken 
+            signInWithCustomToken,
+            onAuthStateChanged, // NEW: Listener for state changes
+            GoogleAuthProvider, // NEW: Google Provider
+            signInWithPopup // NEW: Google Sign-in method
         } from "https://www.gstatic.com/firebasejs/12.6.0/firebase-auth.js";
         import { 
             getFirestore, 
@@ -160,11 +173,9 @@
         } from "https://www.gstatic.com/firebasejs/12.6.0/firebase-firestore.js";
 
         // --- ENVIRONMENT VARIABLES (MANDATORY USE) ---
-        // These variables are provided by the canvas environment.
         const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
         const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
         
-        // This is the hardcoded configuration for the user's project, used as a robust fallback.
         const FALLBACK_FIREBASE_CONFIG = {
             apiKey: "AIzaSyBNIUQpPPas83-Sk8Ux0LX270yZFYSIy0Q",
             authDomain: "take-the-pills.firebaseapp.com",
@@ -175,21 +186,18 @@
             measurementId: "G-EP5JVDCG1L"
         };
 
-        let firebaseConfig = FALLBACK_FIREBASE_CONFIG; // Start with the fallback
+        let firebaseConfig = FALLBACK_FIREBASE_CONFIG;
         let configString = ''; 
         
         try {
-            // Attempt to load and parse the configuration from the system variable __firebase_config
             const systemConfigString = typeof __firebase_config !== 'undefined' ? __firebase_config : '{}';
             configString = systemConfigString;
             const systemConfig = JSON.parse(systemConfigString);
             
-            // If the system provided a valid configuration (checking for projectId), use it.
             if (systemConfig && systemConfig.projectId) {
                 console.log("Using system-provided Firebase configuration.");
                 firebaseConfig = systemConfig;
             } else {
-                // If system config is empty or invalid, keep the default (FALLBACK_FIREBASE_CONFIG)
                 console.log("System configuration missing or invalid. Using hardcoded fallback configuration.");
             }
         } catch (e) {
@@ -207,6 +215,7 @@
         const intakeDateInput = document.getElementById('intake-date');
         const scheduleTitle = document.getElementById('schedule-title');
         const weeklySummaryElement = document.getElementById('weekly-summary');
+        const googleLoginBtn = document.getElementById('google-login-btn'); // NEW
 
         // Firebase instances
         let db = null; 
@@ -214,6 +223,7 @@
         let isFirebaseActive = false;
         let userId = null;
         let detailedUnsubscribe = null; 
+        let isAuthListenerInitialized = false; // To ensure data loading only happens once on initial auth
 
         // Local state
         let currentScheduleDateString = null;
@@ -222,8 +232,6 @@
 
         /**
          * Converts a Date object to a YYYY-MM-DD string.
-         * @param {Date} date 
-         * @returns {string}
          */
         const formatDateString = (date) => {
             return date.toISOString().split('T')[0];
@@ -231,8 +239,6 @@
 
         /**
          * Converts a Date object to a Day Name (e.g., 'Mon', 'Tue').
-         * @param {Date} date 
-         * @returns {string}
          */
         const formatDayName = (date) => {
             return date.toLocaleDateString('en-US', { weekday: 'short' });
@@ -240,7 +246,6 @@
         
         /**
          * Gets the current time in HH:MM (24-hour) format.
-         * @returns {string}
          */
         const getCurrentTimeHHMM = () => {
             const now = new Date();
@@ -251,18 +256,15 @@
 
         /**
          * Sets the schedule date and triggers the detailed view reload.
-         * @param {string} dateString - YYYY-MM-DD
          */
         const setDetailedScheduleDate = (dateString) => {
             currentScheduleDateString = dateString;
-            // Format the title nicely for the user
             const date = new Date(dateString);
             const formattedDate = date.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
             scheduleTitle.textContent = `Schedule for ${formattedDate}`;
 
             loadDetailedReminders();
             
-            // Highlight the active tile in the weekly summary
             document.querySelectorAll('.weekly-tile').forEach(tile => {
                 if (tile.getAttribute('data-date') === dateString) {
                     tile.classList.add('active');
@@ -285,7 +287,6 @@
          */
         const hideLoading = () => {
             loadingElement.classList.add('hidden');
-            // Re-enable only if Firebase is active
             if (isFirebaseActive) {
                 addButton.disabled = false;
             }
@@ -294,14 +295,75 @@
         // --- Firebase Setup and Authentication ---
 
         /**
-         * Initializes Firebase and handles authentication.
+         * Handles the authentication state change, which runs on startup and sign-in/out.
+         */
+        const handleAuthStateChange = (user) => {
+            // Unsubscribe from old listener if present
+            if (detailedUnsubscribe) {
+                detailedUnsubscribe();
+                detailedUnsubscribe = null;
+            }
+            
+            showLoading();
+
+            if (user) {
+                // User is signed in (either via Custom Token, Anonymous, or Google)
+                userId = user.uid;
+                isFirebaseActive = true;
+                
+                const isPermanent = user.isAnonymous === false;
+                const authStatus = isPermanent ? '(Permanent)' : '(Temporary)';
+                userIdDisplay.textContent = `User ID: ${userId} ${authStatus}`;
+                
+                // Hide Google login button if permanently signed in
+                googleLoginBtn.classList.add('hidden'); 
+
+                // Load initial data (only run once after auth is settled)
+                if (!isAuthListenerInitialized) {
+                    intakeDateInput.value = formatDateString(new Date());
+                    setDetailedScheduleDate(formatDateString(new Date()));
+                    loadWeeklySummary();
+                    isAuthListenerInitialized = true;
+                }
+                
+            } else {
+                // No user is actively signed in (shouldn't happen in canvas due to custom token)
+                // or user signed out.
+                userId = null;
+                isFirebaseActive = false;
+                userIdDisplay.textContent = 'Session Expired or Not Logged In';
+                
+                // If the listener has already run once, and we end up here, re-try anonymous sign-in
+                if (isAuthListenerInitialized) {
+                     signInAnonymously(auth).then(cred => {
+                        userId = cred.user.uid;
+                        isFirebaseActive = true;
+                        userIdDisplay.textContent = `User ID: ${userId} (New Anonymous)`;
+                        googleLoginBtn.classList.remove('hidden'); // Show button to upgrade session
+                    }).catch(error => {
+                        console.error("Anonymous sign-in failed:", error);
+                        // Fallback to UUID if all Auth methods fail
+                        userId = crypto.randomUUID(); 
+                        userIdDisplay.textContent = `User ID: ${userId} (UUID Fallback)`;
+                    });
+                }
+            }
+            
+            // Show login button if user is temporary/anonymous
+            if (user && user.isAnonymous) {
+                googleLoginBtn.classList.remove('hidden');
+            }
+
+            hideLoading();
+        };
+
+        /**
+         * Initializes Firebase and sets up the Auth State Listener.
          */
         async function setupFirebase() {
             try {
-                showLoading();
                 setLogLevel('Debug'); 
                 
-                // 1. Check for valid Firebase configuration (e.g., must contain projectId)
                 if (!firebaseConfig || !firebaseConfig.projectId) {
                     // Log debug info
                     console.error("--- DEBUG INFO: Firebase Config Status ---");
@@ -309,63 +371,43 @@
                     console.error("Used firebaseConfig object:", firebaseConfig); 
                     console.error("----------------------------------------");
                     
-                    // Handle complete failure gracefully and return
                     isFirebaseActive = false;
-                    reminderListElement.innerHTML = `<p class="text-center text-red-500 py-4">Database features disabled: Configuration missing/invalid. Check console for details.</p>`;
+                    reminderListElement.innerHTML = `<p class="text-center text-red-500 py-4">Database features disabled: Configuration missing/invalid.</p>`;
                     addButton.textContent = 'Config Failed';
                     addButton.disabled = true;
                     userIdDisplay.textContent = 'Config Failed: Database Disconnected';
                     hideLoading();
-                    
-                    // Returning here prevents the failed initialization/auth attempts below.
                     return; 
                 }
 
-                // Initialize Firebase App
+                // Initialize Firebase App, Auth, and Firestore
                 const app = initializeApp(firebaseConfig);
                 auth = getAuth(app);
                 db = getFirestore(app);
                 
-                isFirebaseActive = true; 
-                let isAuthSuccess = false;
+                // 1. Set up the permanent authentication state listener
+                onAuthStateChanged(auth, handleAuthStateChange);
                 
-                // 2. Attempt authentication using the environment's token or anonymity
+                // 2. Perform the initial sign-in for the environment
                 try {
                     if (initialAuthToken) {
-                        // Use environment token if available (for Canvas)
-                        const userCredential = await signInWithCustomToken(auth, initialAuthToken);
-                        userId = userCredential.user.uid;
-                        isAuthSuccess = true;
+                        // Use environment token (Canvas)
+                        await signInWithCustomToken(auth, initialAuthToken);
+                        console.log("Signed in with custom token.");
                     } else {
-                        // Fallback to anonymous sign-in (for external hosting like GitHub Pages)
-                        const userCredential = await signInAnonymously(auth);
-                        userId = userCredential.user.uid;
-                        isAuthSuccess = true;
+                        // Fallback to anonymous sign-in
+                        await signInAnonymously(auth);
+                        console.log("Signed in anonymously.");
                     }
                 } catch (authError) {
-                    // Fallback to UUID if all Auth methods fail (e.g., if Firestore is not enabled)
-                    console.warn("Firebase Auth failed. Falling back to UUID:", authError.message);
-                    userId = crypto.randomUUID(); 
-                    isAuthSuccess = false;
-                }
-
-                if (userId) {
-                    const authStatus = isAuthSuccess ? '(Authenticated)' : '(UUID Fallback)';
-                    userIdDisplay.textContent = `User ID: ${userId} ${authStatus}`;
-                    
-                    // Set today's date and start data listeners
-                    intakeDateInput.value = formatDateString(new Date());
-                    setDetailedScheduleDate(formatDateString(new Date()));
-                    loadWeeklySummary();
-                    hideLoading();
-                } else {
-                    throw new Error("Failed to establish a unique user ID.");
+                    console.warn("Initial Firebase Auth failed (Custom/Anonymous):", authError.message);
+                    // The onAuthStateChanged listener will handle the resulting unauthenticated state
+                    // or fall back to UUID if needed.
                 }
 
             } catch (error) {
-                console.error("Firebase Initialization or Data Setup failed:", error);
+                console.error("Firebase Initialization failed:", error);
                 
-                // Handle complete failure
                 isFirebaseActive = false;
                 
                 reminderListElement.innerHTML = `<p class="text-center text-red-500 py-4">Firebase connection failed! Check console for details.</p>`;
@@ -378,8 +420,38 @@
         }
 
         /**
+         * Signs the user in using Google pop-up authentication.
+         */
+        const signInWithGoogle = async () => {
+            if (!auth) {
+                console.error("Firebase Auth not initialized.");
+                return;
+            }
+            
+            googleLoginBtn.disabled = true;
+            googleLoginBtn.textContent = 'Signing in...';
+
+            try {
+                const provider = new GoogleAuthProvider();
+                await signInWithPopup(auth, provider);
+                // The onAuthStateChanged listener will handle the success and data migration
+                console.log("Successfully signed in with Google.");
+            } catch (error) {
+                console.error("Google Sign-in failed:", error);
+                // Handle specific error codes if needed (e.g., popup closed)
+                // For simplicity, just log and reset the button.
+            } finally {
+                googleLoginBtn.disabled = false;
+                googleLoginBtn.innerHTML = `
+                    <svg class="h-5 w-5 mr-2" viewBox="0 0 24 24" fill="currentColor">...</svg>
+                    Sign In with Google (Save Data)
+                `; // Revert innerHTML for the icon
+                googleLoginBtn.classList.remove('hidden'); // The handleAuthStateChange will hide it on success
+            }
+        };
+
+        /**
          * Gets the reference to the user's reminders collection in Firestore.
-         * @returns {object|null} The Firestore Collection Reference or null if not active.
          */
         const getRemindersCollectionRef = () => {
             if (!isFirebaseActive || !db || !userId) {
@@ -387,10 +459,11 @@
                 return null;
             }
             // Private path: /artifacts/{appId}/users/{userId}/reminders
+            // This ensures data is local to the signed-in user, satisfying the user's request.
             return collection(db, `artifacts/${appId}/users/${userId}/reminders`);
         }
 
-        // --- Data Operations ---
+        // --- Data Operations (Remains unchanged - uses the determined 'userId') ---
 
         /**
          * Adds a new reminder to Firestore.
@@ -410,8 +483,8 @@
                     name: name,
                     date: date, // YYYY-MM-DD
                     time: time, // HH:MM (Scheduled time)
-                    isTaken: false, // NEW: Persistent taken status
-                    takenAt: null, // NEW: Timestamp when it was taken
+                    isTaken: false, 
+                    takenAt: null, 
                     created_at: new Date().toISOString(), 
                 });
 
@@ -436,7 +509,6 @@
             const docRef = doc(collectionRef, docId);
             const newStatus = !currentStatus;
             
-            // Set takenAt to the current ISO string if marked as taken, or null if untaken
             const takenTime = newStatus ? new Date().toISOString() : null;
 
             try {
@@ -452,7 +524,6 @@
 
         /**
          * Deletes a reminder from Firestore.
-         * @param {string} docId - The Firestore document ID to delete.
          */
         const deleteReminder = async (docId) => {
             const collectionRef = getRemindersCollectionRef();
@@ -465,7 +536,7 @@
             }
         };
 
-        // --- Weekly Summary Logic ---
+        // --- Weekly Summary Logic (Remains unchanged) ---
 
         /**
          * Sets up the real-time listener for the next 7 days of reminders.
@@ -473,7 +544,7 @@
         const loadWeeklySummary = () => {
             const collectionRef = getRemindersCollectionRef();
             if (!collectionRef) {
-                renderWeeklySummary({}); // Render empty summary if offline
+                renderWeeklySummary({});
                 return;
             }
 
@@ -481,10 +552,9 @@
             const startDateString = formatDateString(today);
 
             const endDate = new Date();
-            endDate.setDate(today.getDate() + 6); // Look 7 days ahead (today + 6)
+            endDate.setDate(today.getDate() + 6);
             const endDateString = formatDateString(endDate);
             
-            // Query for all reminders in the next 7 days.
             const q = query(
                 collectionRef,
                 where("date", ">=", startDateString),
@@ -497,8 +567,7 @@
                     allReminders.push({ id: doc.id, ...doc.data() });
                 });
 
-                // Group and count client-side
-                const weeklyReminders = {}; // { 'YYYY-MM-DD': [{...}, {...}] }
+                const weeklyReminders = {};
                 
                 allReminders.forEach((data) => {
                     const dateKey = data.date;
@@ -517,12 +586,10 @@
         
         /**
          * Renders the weekly schedule tiles.
-         * @param {Object} remindersByDate - Reminders grouped by date string.
          */
         const renderWeeklySummary = (remindersByDate) => {
             weeklySummaryElement.innerHTML = '';
             const today = new Date();
-            const todayString = formatDateString(today);
 
             for (let i = 0; i < 7; i++) {
                 const date = new Date(today);
@@ -532,7 +599,7 @@
                 
                 const dayReminders = remindersByDate[dateString] || [];
                 const totalCount = dayReminders.length;
-                const takenCount = dayReminders.filter(r => r.isTaken).length; // Check persistent status
+                const takenCount = dayReminders.filter(r => r.isTaken).length;
                 
                 let countText = totalCount > 0 ? `${takenCount}/${totalCount}` : '0';
 
@@ -543,14 +610,12 @@
                 const isActive = currentScheduleDateString === dateString;
                 const activeClass = isActive ? 'active' : '';
                 
-                // Color logic: Full purple if all taken, lighter gray/purple otherwise
                 const pillColorClass = (totalCount > 0 && takenCount === totalCount) ? 'bg-green-500' : 
                                        (totalCount > 0) ? 'bg-purple-500' : 'bg-gray-300';
 
                 const tile = document.createElement('div');
                 tile.className = `weekly-tile flex flex-col items-center p-2 rounded-xl text-xs font-medium ${activeClass} bg-white border border-gray-200`;
                 tile.setAttribute('data-date', dateString);
-                // Note: setDetailedScheduleDate calls loadDetailedReminders
                 tile.onclick = () => setDetailedScheduleDate(dateString); 
 
                 tile.innerHTML = `
@@ -565,13 +630,12 @@
         };
 
 
-        // --- Detailed Schedule Logic ---
+        // --- Detailed Schedule Logic (Remains unchanged) ---
 
         /**
          * Sets up the real-time listener for the detailed reminders list for the selected day.
          */
         const loadDetailedReminders = () => {
-            // Stop previous listener if it exists
             if (detailedUnsubscribe) {
                 detailedUnsubscribe();
                 detailedUnsubscribe = null;
@@ -583,7 +647,6 @@
             
             if (!collectionRef) return; 
 
-            // Query for reminders on the selected date. 
             const q = query(
                 collectionRef, 
                 where("date", "==", currentScheduleDateString)
@@ -603,16 +666,13 @@
                     const isPastA = a.time <= nowTime;
                     const isPastB = b.time <= nowTime;
 
-                    const isTakenA = a.isTaken; // Read directly from Firestore data
+                    const isTakenA = a.isTaken;
                     const isTakenB = b.isTaken; 
                     
-                    // Priority Score (1=High, 0=Low). Only applies to today.
-                    // High Priority is: (Not Past AND Not Taken)
                     let priorityA = 0;
                     let priorityB = 0;
 
                     if (isToday) {
-                        // Check if upcoming/due now and NOT taken
                         if (!isPastA && !isTakenA) {
                             priorityA = 1; 
                         }
@@ -621,13 +681,11 @@
                         }
                     }
 
-                    // Primary sort by priority (1 before 0)
                     const prioritySort = priorityB - priorityA; 
                     if (prioritySort !== 0) {
                         return prioritySort;
                     }
                     
-                    // Secondary sort: by time (earlier time comes first)
                     return a.time.localeCompare(b.time);
                 });
                 // === END SORTING LOGIC ===
@@ -635,14 +693,12 @@
                 renderDetailedReminders(reminders);
             }, (error) => {
                 console.error("Error listening to detailed reminders:", error);
-                // Fallback error message if listener fails for other reasons
                 reminderListElement.innerHTML = `<p class="text-center text-red-500 py-4">Failed to load schedule. (Check console for details)</p>`;
             });
         };
 
         /**
          * Renders the detailed list of reminders to the DOM.
-         * @param {Array<Object>} reminders - The array of reminder objects.
          */
         const renderDetailedReminders = (reminders) => {
             reminderListElement.innerHTML = '';
@@ -657,10 +713,9 @@
 
             reminders.forEach(reminder => {
                 const docId = reminder.id;
-                const isTaken = reminder.isTaken || false; // Read status from the data object
+                const isTaken = reminder.isTaken || false;
                 const isToday = currentScheduleDateString === formatDateString(new Date());
                 
-                // Check if scheduled time has passed AND it's not already marked as taken
                 const isPast = isToday && reminder.time <= getCurrentTimeHHMM() && !isTaken;
 
                 let cardClass = 'bg-white border-l-purple-400';
@@ -677,16 +732,14 @@
                     actionText = 'Mark as Taken';
                 }
                 
-                // Display the time it was taken if available
                 let takenTimeDisplay = '';
                 if (isTaken && reminder.takenAt) {
                     try {
-                        // Convert ISO string to a readable time format (e.g., "Taken at 10:30 AM")
                         const takenDate = new Date(reminder.takenAt);
                         const timeOptions = { hour: '2-digit', minute: '2-digit', hour12: true };
                         takenTimeDisplay = `(Taken ${takenDate.toLocaleTimeString('en-US', timeOptions)})`;
                     } catch (e) {
-                        takenTimeDisplay = '(Taken)'; // Fallback if timestamp parsing fails
+                        takenTimeDisplay = '(Taken)';
                     }
                 }
 
@@ -695,7 +748,6 @@
                 reminderCard.className = `reminder-card flex items-center justify-between p-4 border-l-4 rounded-xl ${cardClass}`;
                 reminderCard.setAttribute('data-id', docId);
 
-                // Content area
                 const contentDiv = document.createElement('div');
                 contentDiv.className = 'flex-grow';
                 contentDiv.innerHTML = `
@@ -706,23 +758,18 @@
                     </p>
                 `;
 
-                // Actions area
                 const actionsDiv = document.createElement('div');
                 actionsDiv.className = 'flex items-center space-x-2 ml-4';
 
-                // Mark as Taken Button
                 const takeButton = document.createElement('button');
                 takeButton.textContent = actionText;
                 takeButton.className = `px-3 py-1 text-xs font-semibold rounded-full shadow-sm transition-colors ${isTaken 
                     ? 'bg-green-500 text-white hover:bg-green-600' 
                     : 'bg-purple-100 text-purple-700 hover:bg-purple-200'}`;
                 takeButton.onclick = () => {
-                    // Call the new function to update Firestore
                     toggleTakenStatus(docId, isTaken);
-                    // The UI update happens automatically because of onSnapshot!
                 };
 
-                // Delete Button
                 const deleteButton = document.createElement('button');
                 deleteButton.innerHTML = `
                     <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-red-400 hover:text-red-600 transition" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -742,19 +789,15 @@
             });
         };
         
-        // --- PWA Service Worker Registration ---
+        // --- PWA Service Worker Registration (Remains unchanged) ---
         const registerServiceWorker = () => {
-            // Check if service workers are supported
             if ('serviceWorker' in navigator) {
-                // Check if we are in a valid environment (HTTP/HTTPS) to avoid blob/file protocol errors
                 if (window.location.protocol !== 'http:' && window.location.protocol !== 'https:') {
                     console.warn('Service Workers are not supported in this environment (blob/file protocol). skipping registration.');
                     return;
                 }
 
                 window.addEventListener('load', () => {
-                    // The service worker file is now generated in the companion file, 
-                    // so this registration should succeed without a 404.
                     navigator.serviceWorker.register('./service-worker.js', { scope: './' })
                         .then(registration => {
                             console.log('ServiceWorker registration successful with scope: ', registration.scope);
@@ -779,11 +822,14 @@
                 addReminder(name, date, time);
             }
         });
+        
+        // NEW: Google login button listener
+        googleLoginBtn.addEventListener('click', signInWithGoogle);
 
         // --- Start Application ---
         document.addEventListener('DOMContentLoaded', () => {
             setupFirebase();
-            registerServiceWorker(); // Register PWA components
+            registerServiceWorker();
         });
 
     </script>
