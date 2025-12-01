@@ -147,8 +147,8 @@
             setLogLevel 
         } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
-        // --- HARDCODED FIREBASE CONFIGURATION (Provided by user) ---
-        const firebaseConfig = {
+        // --- HARDCODED FIREBASE CONFIGURATION (Renamed for clarity) ---
+        const FIREBASE_CONFIG = {
             apiKey: "AIzaSyBNIUQpPPas83-Sk8Ux0LX270yZFYSIy0Q",
             authDomain: "take-the-pills.firebaseapp.com",
             projectId: "take-the-pills",
@@ -159,7 +159,7 @@
         };
         
         // Global variables provided by the environment (if available)
-        const appId = typeof __app_id !== 'undefined' ? __app_id : firebaseConfig.projectId;
+        const appId = typeof __app_id !== 'undefined' ? __app_id : FIREBASE_CONFIG.projectId;
         const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
 
         // UI Elements
@@ -267,7 +267,7 @@
                 setLogLevel('Debug'); 
                 
                 // 1. Initialize Firebase with the provided configuration
-                const app = initializeApp(firebaseConfig);
+                const app = initializeApp(FIREBASE_CONFIG);
                 auth = getAuth(app);
                 db = getFirestore(app);
                 
