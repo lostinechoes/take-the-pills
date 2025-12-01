@@ -147,20 +147,20 @@
             setLogLevel 
         } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
-        // Global variables provided by the environment
-        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
-        const firebaseConfigString = typeof __firebase_config !== 'undefined' ? __firebase_config : null;
-        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+        // --- HARDCODED FIREBASE CONFIGURATION (Provided by user) ---
+        const firebaseConfig = {
+            apiKey: "AIzaSyBNIUQpPPas83-Sk8Ux0LX270yZFYSIy0Q",
+            authDomain: "take-the-pills.firebaseapp.com",
+            projectId: "take-the-pills",
+            storageBucket: "take-the-pills.firebasestorage.app",
+            messagingSenderId: "485269196768",
+            appId: "1:485269196768:web:16ddcb88ade8ba404ae585",
+            measurementId: "G-EP5JVDCG1L"
+        };
         
-        let firebaseConfig = null;
-        if (firebaseConfigString) {
-            try {
-                firebaseConfig = JSON.parse(firebaseConfigString);
-            } catch (e) {
-                console.error("Failed to parse __firebase_config:", e);
-            }
-        }
-
+        // Global variables provided by the environment (if available)
+        const appId = typeof __app_id !== 'undefined' ? __app_id : firebaseConfig.projectId;
+        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
 
         // UI Elements
         const loadingElement = document.getElementById('loading');
@@ -266,40 +266,37 @@
                 showLoading();
                 setLogLevel('Debug'); 
                 
-                if (!firebaseConfig) {
-                    throw new Error("Firebase configuration is missing or invalid. Check the environment variables.");
-                }
-
-                // 1. Initialize Firebase with the environment's configuration
+                // 1. Initialize Firebase with the provided configuration
                 const app = initializeApp(firebaseConfig);
                 auth = getAuth(app);
                 db = getFirestore(app);
                 
-                // Set active flag before authentication attempt
                 isFirebaseActive = true; 
                 let isAuthSuccess = false;
                 
                 // 2. Attempt authentication using the environment's token or anonymity
                 try {
                     if (initialAuthToken) {
+                        // Use environment token if available (for Canvas)
                         const userCredential = await signInWithCustomToken(auth, initialAuthToken);
                         userId = userCredential.user.uid;
                         isAuthSuccess = true;
                     } else {
+                        // Fallback to anonymous sign-in (for external hosting like GitHub Pages)
                         const userCredential = await signInAnonymously(auth);
                         userId = userCredential.user.uid;
                         isAuthSuccess = true;
                     }
                 } catch (authError) {
+                    // Fallback to UUID if all Auth methods fail (e.g., if Firestore is not enabled)
                     console.warn("Firebase Auth failed. Falling back to UUID:", authError.message);
-                    
-                    // 3. Fallback to UUID if all Auth methods fail
                     userId = crypto.randomUUID(); 
                     isAuthSuccess = false;
                 }
 
                 if (userId) {
-                    userIdDisplay.textContent = `User ID: ${userId} ${isAuthSuccess ? '(Authenticated)' : '(UUID Fallback - Read/Write Access)'}`;
+                    const authStatus = isAuthSuccess ? '(Authenticated)' : '(UUID Fallback)';
+                    userIdDisplay.textContent = `User ID: ${userId} ${authStatus}`;
                     
                     // Set today's date and start data listeners
                     intakeDateInput.value = formatDateString(new Date());
@@ -314,13 +311,9 @@
                 console.error("Firebase Initialization or Data Setup failed:", error);
                 
                 // Handle complete failure
-                userId = 'offline_mode_user'; 
                 isFirebaseActive = false;
                 
-                reminderListElement.innerHTML = `<p class="text-center text-red-500 py-4">Firebase connection failed! Please ensure the necessary configuration is available.</p>`;
-                document.getElementById('medicine-name').disabled = true;
-                document.getElementById('intake-date').disabled = true;
-                document.getElementById('intake-time').disabled = true;
+                reminderListElement.innerHTML = `<p class="text-center text-red-500 py-4">Firebase connection failed! Check console for details.</p>`;
                 addButton.textContent = 'Connection Failed';
                 addButton.disabled = true;
 
@@ -334,8 +327,8 @@
          * @returns {object|null} The Firestore Collection Reference or null if not active.
          */
         const getRemindersCollectionRef = () => {
-            if (!isFirebaseActive || !db || !userId || userId === 'offline_mode_user') {
-                console.warn("Attempted Firestore operation while Firebase is not active or user is offline.");
+            if (!isFirebaseActive || !db || !userId) {
+                console.warn("Attempted Firestore operation while Firebase is not active or user ID is missing.");
                 return null;
             }
             // Private path: /artifacts/{appId}/users/{userId}/reminders
@@ -350,9 +343,7 @@
         const addReminder = async (name, date, time) => {
             const collectionRef = getRemindersCollectionRef();
             if (!collectionRef) {
-                const statusMessage = 'Data Saving Disabled: Configuration missing.';
-                console.error(statusMessage);
-                userIdDisplay.textContent = statusMessage; 
+                userIdDisplay.textContent = 'Data Saving Disabled: No active Firestore connection.'; 
                 return;
             }
 
@@ -426,7 +417,10 @@
          */
         const loadWeeklySummary = () => {
             const collectionRef = getRemindersCollectionRef();
-            if (!collectionRef) return;
+            if (!collectionRef) {
+                renderWeeklySummary({}); // Render empty summary if offline
+                return;
+            }
 
             const today = new Date();
             const startDateString = formatDateString(today);
@@ -525,15 +519,11 @@
             // Stop previous listener if it exists
             if (detailedUnsubscribe) {
                 detailedUnsubscribe();
+                detailedUnsubscribe = null;
             }
 
             if (!currentScheduleDateString) return;
             
-            // Guard: If Firebase is not active (i.e., config failed), exit gracefully. 
-            if (!isFirebaseActive) {
-                return;
-            }
-
             const collectionRef = getRemindersCollectionRef();
             
             if (!collectionRef) return; 
