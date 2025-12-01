@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Tailwind CDN Example</title>
+
+  <!-- Tailwind CSS via Play CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <!-- Optional: Configure Tailwind directly in the browser -->
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            brand: '#1e40af',
+          }
+        }
+      }
+    }
+  </script>
+</head>
+<body class="bg-gray-100 flex items-center justify-center min-h-screen">
+  <div class="bg-white p-6 rounded-lg shadow-lg text-center">
+    <h1 class="text-2xl font-bold text-brand">Hello Tailwind!</h1>
+    <p class="mt-2 text-gray-600">This is styled using Tailwind CSS via CDN.</p>
+    <button class="mt-4 px-4 py-2 bg-brand text-white rounded hover:bg-blue-800">
+      Click Me
+    </button>
+  </div>
+</body>
+</html>
