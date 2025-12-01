@@ -19,8 +19,10 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
     
     <!-- PWA MANIFEST and ICON SETUP -->
+    <!-- The missing manifest file is now included below -->
     <link rel="manifest" href="./manifest.json">
     <meta name="theme-color" content="#8B5CF6">
+    <!-- Icon placeholder for PWA installation screen -->
     <link rel="apple-touch-icon" href="https://placehold.co/192x192/8B5CF6/ffffff?text=Pill">
 
     <style>
@@ -161,16 +163,36 @@
         const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
         const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
         
-        let firebaseConfig = {};
-        let configString = ''; // Global scope for logging in setupFirebase
+        // Configuration provided by the user/system.
+        // This is your hardcoded FALLBACK configuration to ensure the app works 
+        // even if the environment variable (__firebase_config) is empty or invalid.
+        let firebaseConfig = {
+            apiKey: "AIzaSyBNIUQpPPas83-Sk8Ux0LX270yZFYSIy0Q",
+            authDomain: "take-the-pills.firebaseapp.com",
+            projectId: "take-the-pills",
+            storageBucket: "take-the-pills.firebasestorage.app",
+            messagingSenderId: "485269196768",
+            appId: "1:485269196768:web:16ddcb88ade8ba404ae585",
+            measurementId: "G-EP5JVDCG1L"
+        };
+        
+        let configString = ''; 
+        
         try {
-            // 1. Get the raw config string
-            configString = typeof __firebase_config !== 'undefined' ? __firebase_config : '{}';
-            // 2. Safely parse the JSON string
-            firebaseConfig = JSON.parse(configString);
+            // Attempt to load the configuration from the system variable __firebase_config
+            const systemConfigString = typeof __firebase_config !== 'undefined' ? __firebase_config : '{}';
+            configString = systemConfigString;
+            const systemConfig = JSON.parse(systemConfigString);
+            
+            // If the system provided a valid, non-empty config, use it instead of the fallback.
+            if (systemConfig && systemConfig.projectId) {
+                console.log("Using system-provided Firebase configuration.");
+                firebaseConfig = systemConfig;
+            } else {
+                console.log("System configuration missing or invalid. Using hardcoded fallback configuration.");
+            }
         } catch (e) {
-            console.error("Failed to parse __firebase_config JSON string:", e);
-            // firebaseConfig remains {} or whatever it was if parsing failed, triggering the check below.
+            console.error("Failed to parse __firebase_config JSON string. Using hardcoded fallback.", e);
         }
         // --- END ENVIRONMENT VARIABLES ---
 
@@ -282,8 +304,8 @@
                 if (!firebaseConfig || !firebaseConfig.projectId) {
                     // Log debug info
                     console.error("--- DEBUG INFO: Firebase Config Status ---");
-                    console.error("Raw __firebase_config string:", configString);
-                    console.error("Parsed firebaseConfig object:", firebaseConfig);
+                    console.error("Raw __firebase_config string (or system config):", configString);
+                    console.error("Used firebaseConfig object:", firebaseConfig);
                     console.error("----------------------------------------");
                     
                     // Handle complete failure gracefully and return
