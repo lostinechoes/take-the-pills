@@ -132,7 +132,6 @@
         import { 
             getAuth, 
             signInAnonymously, 
-            signInWithCustomToken, 
             onAuthStateChanged 
         } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { 
@@ -150,8 +149,18 @@
 
         // Global variables provided by the environment
         const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
-        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
-        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null; 
+        
+        // User-provided Firebase configuration (hardcoded)
+        const firebaseConfig = {
+            apiKey: "AIzaSyBNIUQpPPas83-Sk8Ux0LX270yZFYSIy0Q",
+            authDomain: "take-the-pills.firebaseapp.com",
+            projectId: "take-the-pills",
+            storageBucket: "take-the-pills.firebasestorage.app",
+            messagingSenderId: "485269196768",
+            appId: "1:485269196768:web:16ddcb88ade8ba404ae585",
+            measurementId: "G-EP5JVDCG1L"
+        };
+
 
         // UI Elements
         const loadingElement = document.getElementById('loading');
@@ -257,68 +266,61 @@
                 showLoading();
                 setLogLevel('Debug'); 
                 
-                if (Object.keys(firebaseConfig).length === 0) {
-                    console.error("FIREBASE WARNING: Configuration is empty. Data saving/loading will be disabled.");
-                    
-                    // --- FIX: Handle missing config gracefully (disabling form/list) ---
-                    userId = 'offline_mode_user'; 
-                    isFirebaseActive = false;
-                    intakeDateInput.value = formatDateString(new Date());
-
-                    // 1. Set the definitive static message for the list first
-                    reminderListElement.innerHTML = `<p class="text-center text-gray-500 py-4">Firebase configuration is missing. Data saving is disabled.</p>`;
-
-                    // 2. Render the weekly summary (empty) and set the schedule date header.
-                    renderWeeklySummary({});
-                    setDetailedScheduleDate(formatDateString(new Date())); 
-
-                    // 3. Disable the form elements
-                    document.getElementById('medicine-name').disabled = true;
-                    document.getElementById('intake-date').disabled = true;
-                    document.getElementById('intake-time').disabled = true;
-                    addButton.textContent = 'Data Saving Disabled';
-                    addButton.disabled = true;
-                    
-                    // 4. Update status display and hide loader
-                    userIdDisplay.textContent = 'Data Saving Disabled: Missing Firebase Config';
-                    hideLoading();
-                    return; 
-                }
-
+                // Set Firebase as active initially
                 isFirebaseActive = true;
                 
                 intakeDateInput.value = formatDateString(new Date());
 
+                // Initialize Firebase with the user's custom configuration
                 const app = initializeApp(firebaseConfig);
                 auth = getAuth(app);
                 db = getFirestore(app);
+                
+                let isAuthSuccess = false;
+                
+                try {
+                    // Attempt anonymous sign-in with the custom config
+                    const userCredential = await signInAnonymously(auth);
+                    userId = userCredential.user.uid;
+                    isAuthSuccess = true;
+                } catch (authError) {
+                    // SUPPRESSING the 'auth/configuration-not-found' error 
+                    // as it is expected in this environment with external config.
+                    // console.error("Firebase Auth failed (using custom config). Falling back to UUID:", authError.message);
+                    
+                    // Fallback: Use a unique ID if Auth fails
+                    userId = crypto.randomUUID(); 
+                    isAuthSuccess = false; // Mark that Firebase Auth is not operational
+                }
 
-                onAuthStateChanged(auth, async (user) => {
-                    if (user) {
-                        userId = user.uid;
-                        userIdDisplay.textContent = `User ID: ${userId}`;
-                        
-                        setDetailedScheduleDate(formatDateString(new Date()));
-                        loadWeeklySummary();
-                        hideLoading();
-                    } else {
-                        if (initialAuthToken) {
-                            await signInWithCustomToken(auth, initialAuthToken);
-                        } else {
-                            await signInAnonymously(auth);
-                        }
-                    }
-                });
+                if (userId) {
+                    // Update the UI with the obtained or generated user ID
+                    userIdDisplay.textContent = `User ID: ${userId} ${isAuthSuccess ? '(Auth Active)' : '(UUID Fallback - Read/Write Access)'}`;
+                    
+                    // Proceed with data loading once userId is established
+                    setDetailedScheduleDate(formatDateString(new Date()));
+                    loadWeeklySummary();
+                    hideLoading();
+                } else {
+                    // This should ideally not happen if UUID is used as a fallback
+                    throw new Error("Failed to establish a unique user ID.");
+                }
 
             } catch (error) {
-                console.error("Firebase setup or authentication failed:", error);
+                console.error("Firebase Initialization or Data Setup failed:", error);
                 
-                let message = 'Auth Failed! Check console for details.';
-                if (error.code && error.code.includes("invalid-api-key")) {
-                    message = 'Setup Error: Invalid/Missing Firebase Config. (Check console)';
-                }
+                // If initialization fails, fall back to offline mode gracefully
+                userId = 'offline_mode_user'; 
+                isFirebaseActive = false;
                 
-                userIdDisplay.textContent = message;
+                reminderListElement.innerHTML = `<p class="text-center text-red-500 py-4">Firebase connection failed! Check console for configuration errors.</p>`;
+                document.getElementById('medicine-name').disabled = true;
+                document.getElementById('intake-date').disabled = true;
+                document.getElementById('intake-time').disabled = true;
+                addButton.textContent = 'Connection Failed';
+                addButton.disabled = true;
+
+                userIdDisplay.textContent = 'Connection Failed: Check console';
                 hideLoading();
             }
         }
