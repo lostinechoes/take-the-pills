@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Pill Time Reminder</title>
     <!-- Load Tailwind CSS -->
-    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="/style.css" rel="stylesheet">
     <!-- Load Inter font -->
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
     
@@ -153,13 +153,15 @@
         const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
         
         let firebaseConfig = {};
+        let configString = ''; // Global scope for logging in setupFirebase
         try {
-            // Parse the __firebase_config string provided by the environment
-            // Ensure proper fallback if the variable is not defined or invalid
-            const configString = typeof __firebase_config !== 'undefined' ? __firebase_config : '{}';
+            // 1. Get the raw config string
+            configString = typeof __firebase_config !== 'undefined' ? __firebase_config : '{}';
+            // 2. Safely parse the JSON string
             firebaseConfig = JSON.parse(configString);
         } catch (e) {
-            console.error("Failed to parse __firebase_config. Firestore operations may fail.", e);
+            console.error("Failed to parse __firebase_config JSON string:", e);
+            // firebaseConfig remains {} or whatever it was if parsing failed, triggering the check below.
         }
         // --- END ENVIRONMENT VARIABLES ---
 
@@ -267,12 +269,17 @@
                 showLoading();
                 setLogLevel('Debug'); 
                 
-                // 1. Initialize Firebase with the provided configuration
-                // Ensure firebaseConfig is not empty before attempting to initialize
-                if (Object.keys(firebaseConfig).length === 0) {
-                    throw new Error("Firebase configuration is missing or invalid.");
+                // 1. Check for valid Firebase configuration (e.g., must contain projectId)
+                if (!firebaseConfig || !firebaseConfig.projectId) {
+                    // Log debug info before throwing to help diagnose missing environment variables
+                    console.error("--- DEBUG INFO: Firebase Config Status ---");
+                    console.error("Raw __firebase_config string:", configString);
+                    console.error("Parsed firebaseConfig object:", firebaseConfig);
+                    console.error("----------------------------------------");
+                    throw new Error("Firebase configuration is missing or invalid (projectId not found).");
                 }
 
+                // Initialize Firebase App
                 const app = initializeApp(firebaseConfig);
                 auth = getAuth(app);
                 db = getFirestore(app);
