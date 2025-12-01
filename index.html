@@ -10,7 +10,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
     
     <!-- PWA MANIFEST and ICON SETUP -->
-    <link rel="manifest" href="/manifest.json">
+    <link rel="manifest" href="./manifest.json">
     <meta name="theme-color" content="#8B5CF6">
     <link rel="apple-touch-icon" href="https://placehold.co/192x192/8B5CF6/ffffff?text=Pill">
 
@@ -70,7 +70,7 @@
         <header class="text-center">
             <h1 class="text-3xl font-extrabold text-purple-700 mb-1">Pill Time 💊</h1>
             <p class="text-sm text-gray-500">Your scheduled medicine intake</p>
-            <p id="user-id-display" class="text-xs text-gray-300 mt-2">Loading user...</p>
+            <p id="user-id-display" class="text-xs text-gray-300 mt-2">Authenticating user...</p>
         </header>
 
         <!-- Loading Indicator -->
@@ -131,8 +131,8 @@
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { 
             getAuth, 
-            signInAnonymously, 
-            onAuthStateChanged 
+            signInAnonymously,
+            signInWithCustomToken 
         } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { 
             getFirestore, 
@@ -149,17 +149,17 @@
 
         // Global variables provided by the environment
         const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+        const firebaseConfigString = typeof __firebase_config !== 'undefined' ? __firebase_config : null;
+        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
         
-        // User-provided Firebase configuration (hardcoded)
-        const firebaseConfig = {
-            apiKey: "AIzaSyBNIUQpPPas83-Sk8Ux0LX270yZFYSIy0Q",
-            authDomain: "take-the-pills.firebaseapp.com",
-            projectId: "take-the-pills",
-            storageBucket: "take-the-pills.firebasestorage.app",
-            messagingSenderId: "485269196768",
-            appId: "1:485269196768:web:16ddcb88ade8ba404ae585",
-            measurementId: "G-EP5JVDCG1L"
-        };
+        let firebaseConfig = null;
+        if (firebaseConfigString) {
+            try {
+                firebaseConfig = JSON.parse(firebaseConfigString);
+            } catch (e) {
+                console.error("Failed to parse __firebase_config:", e);
+            }
+        }
 
 
         // UI Elements
@@ -266,54 +266,58 @@
                 showLoading();
                 setLogLevel('Debug'); 
                 
-                // Set Firebase as active initially
-                isFirebaseActive = true;
-                
-                intakeDateInput.value = formatDateString(new Date());
+                if (!firebaseConfig) {
+                    throw new Error("Firebase configuration is missing or invalid. Check the environment variables.");
+                }
 
-                // Initialize Firebase with the user's custom configuration
+                // 1. Initialize Firebase with the environment's configuration
                 const app = initializeApp(firebaseConfig);
                 auth = getAuth(app);
                 db = getFirestore(app);
                 
+                // Set active flag before authentication attempt
+                isFirebaseActive = true; 
                 let isAuthSuccess = false;
                 
+                // 2. Attempt authentication using the environment's token or anonymity
                 try {
-                    // Attempt anonymous sign-in with the custom config
-                    const userCredential = await signInAnonymously(auth);
-                    userId = userCredential.user.uid;
-                    isAuthSuccess = true;
+                    if (initialAuthToken) {
+                        const userCredential = await signInWithCustomToken(auth, initialAuthToken);
+                        userId = userCredential.user.uid;
+                        isAuthSuccess = true;
+                    } else {
+                        const userCredential = await signInAnonymously(auth);
+                        userId = userCredential.user.uid;
+                        isAuthSuccess = true;
+                    }
                 } catch (authError) {
-                    // SUPPRESSING the 'auth/configuration-not-found' error 
-                    // as it is expected in this environment with external config.
-                    // console.error("Firebase Auth failed (using custom config). Falling back to UUID:", authError.message);
+                    console.warn("Firebase Auth failed. Falling back to UUID:", authError.message);
                     
-                    // Fallback: Use a unique ID if Auth fails
+                    // 3. Fallback to UUID if all Auth methods fail
                     userId = crypto.randomUUID(); 
-                    isAuthSuccess = false; // Mark that Firebase Auth is not operational
+                    isAuthSuccess = false;
                 }
 
                 if (userId) {
-                    // Update the UI with the obtained or generated user ID
-                    userIdDisplay.textContent = `User ID: ${userId} ${isAuthSuccess ? '(Auth Active)' : '(UUID Fallback - Read/Write Access)'}`;
+                    userIdDisplay.textContent = `User ID: ${userId} ${isAuthSuccess ? '(Authenticated)' : '(UUID Fallback - Read/Write Access)'}`;
                     
-                    // Proceed with data loading once userId is established
+                    // Set today's date and start data listeners
+                    intakeDateInput.value = formatDateString(new Date());
                     setDetailedScheduleDate(formatDateString(new Date()));
                     loadWeeklySummary();
                     hideLoading();
                 } else {
-                    // This should ideally not happen if UUID is used as a fallback
                     throw new Error("Failed to establish a unique user ID.");
                 }
 
             } catch (error) {
                 console.error("Firebase Initialization or Data Setup failed:", error);
                 
-                // If initialization fails, fall back to offline mode gracefully
+                // Handle complete failure
                 userId = 'offline_mode_user'; 
                 isFirebaseActive = false;
                 
-                reminderListElement.innerHTML = `<p class="text-center text-red-500 py-4">Firebase connection failed! Check console for configuration errors.</p>`;
+                reminderListElement.innerHTML = `<p class="text-center text-red-500 py-4">Firebase connection failed! Please ensure the necessary configuration is available.</p>`;
                 document.getElementById('medicine-name').disabled = true;
                 document.getElementById('intake-date').disabled = true;
                 document.getElementById('intake-time').disabled = true;
