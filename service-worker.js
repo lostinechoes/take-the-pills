@@ -1,42 +1,47 @@
-// Service Worker for basic caching to enable PWA offline/instant loading
+// Service Worker for Pill Time Reminder (Basic Caching)
 const CACHE_NAME = 'pill-time-cache-v1';
 const urlsToCache = [
+    './',
     './index.html',
+    './manifest.json',
     'https://cdn.tailwindcss.com',
-    'https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap'
-    // Firebase SDKs and external assets are generally not cached by Service Workers
-    // in this environment, but the main app and CSS link are included.
+    'https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap',
+    'https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js',
+    'https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js',
+    'https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js'
 ];
 
+// Install event: cache all necessary assets
 self.addEventListener('install', (event) => {
-    // Perform install steps
     event.waitUntil(
         caches.open(CACHE_NAME)
             .then((cache) => {
-                console.log('Opened cache');
-                // We fetch the files and add them to the cache
-                return cache.addAll(urlsToCache).catch(err => {
-                    console.error('Failed to cache required files during install:', err);
-                });
+                console.log('Opened cache and adding assets.');
+                // Add all files to the cache
+                return cache.addAll(urlsToCache);
             })
     );
 });
 
+// Fetch event: serve cached assets when offline, or fetch from network
 self.addEventListener('fetch', (event) => {
-    event.respondWith(
-        caches.match(event.request)
-            .then((response) => {
-                // Cache hit - return response
-                if (response) {
-                    return response;
-                }
-                // No cache hit - fetch from network
-                return fetch(event.request);
-            }
-        )
-    );
+    // Only cache GET requests and skip Firebase API calls which must be live
+    if (event.request.method === 'GET' && !event.request.url.includes('googleapis.com')) {
+        event.respondWith(
+            caches.match(event.request)
+                .then((response) => {
+                    // Cache hit - return response
+                    if (response) {
+                        return response;
+                    }
+                    // No cache hit - fetch from network
+                    return fetch(event.request);
+                })
+        );
+    }
 });
 
+// Activate event: clean up old caches
 self.addEventListener('activate', (event) => {
     const cacheWhitelist = [CACHE_NAME];
     event.waitUntil(
