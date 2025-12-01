@@ -4,8 +4,17 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Pill Time Reminder</title>
-    <!-- Load Tailwind CSS -->
-    <link href="/style.css" rel="stylesheet">
+    
+    <!-- 
+        PRODUCTION NOTICE: This CDN link is used for quick preview only.
+        To use Tailwind in production (as a "locally hosted file"), 
+        you must compile your project's CSS using the Tailwind CLI or PostCSS.
+        
+        The compiled CSS would then be linked like this (and the <script> removed):
+        <link rel="stylesheet" href="./dist/tailwind.css">
+    -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
     <!-- Load Inter font -->
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
     
@@ -271,12 +280,22 @@
                 
                 // 1. Check for valid Firebase configuration (e.g., must contain projectId)
                 if (!firebaseConfig || !firebaseConfig.projectId) {
-                    // Log debug info before throwing to help diagnose missing environment variables
+                    // Log debug info
                     console.error("--- DEBUG INFO: Firebase Config Status ---");
                     console.error("Raw __firebase_config string:", configString);
                     console.error("Parsed firebaseConfig object:", firebaseConfig);
                     console.error("----------------------------------------");
-                    throw new Error("Firebase configuration is missing or invalid (projectId not found).");
+                    
+                    // Handle complete failure gracefully and return
+                    isFirebaseActive = false;
+                    reminderListElement.innerHTML = `<p class="text-center text-red-500 py-4">Database features disabled: Configuration missing/invalid. Check console for details.</p>`;
+                    addButton.textContent = 'Config Failed';
+                    addButton.disabled = true;
+                    userIdDisplay.textContent = 'Config Failed: Database Disconnected';
+                    hideLoading();
+                    
+                    // Returning here prevents the failed initialization/auth attempts below.
+                    return; 
                 }
 
                 // Initialize Firebase App
