@@ -176,17 +176,9 @@
         const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
         const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
         
-        const FALLBACK_FIREBASE_CONFIG = {
-            apiKey: "AIzaSyBNIUQpPPas83-Sk8Ux0LX270yZFYSIy0Q",
-            authDomain: "take-the-pills.firebaseapp.com",
-            projectId: "take-the-pills",
-            storageBucket: "take-the-pills.firebasestorage.app",
-            messagingSenderId: "485269196768",
-            appId: "1:485269196768:web:16ddcb88ade8ba404ae585",
-            measurementId: "G-EP5JVDCG1L"
-        };
-
-        let firebaseConfig = FALLBACK_FIREBASE_CONFIG;
+        // Removed hardcoded fallback config to prevent auth/configuration-not-found error
+        // caused by using an inactive API key. We will rely solely on __firebase_config.
+        let firebaseConfig = null;
         let configString = ''; 
         
         try {
@@ -198,10 +190,10 @@
                 console.log("Using system-provided Firebase configuration.");
                 firebaseConfig = systemConfig;
             } else {
-                console.log("System configuration missing or invalid. Using hardcoded fallback configuration.");
+                console.log("System configuration missing or invalid. Firebase will be disabled gracefully.");
             }
         } catch (e) {
-            console.error("Failed to parse __firebase_config JSON string. Using hardcoded fallback.", e);
+            console.error("Failed to parse __firebase_config JSON string. Firebase will be disabled.", e);
         }
         // --- END ENVIRONMENT VARIABLES ---
 
@@ -215,7 +207,7 @@
         const intakeDateInput = document.getElementById('intake-date');
         const scheduleTitle = document.getElementById('schedule-title');
         const weeklySummaryElement = document.getElementById('weekly-summary');
-        const googleLoginBtn = document.getElementById('google-login-btn'); // NEW
+        const googleLoginBtn = document.getElementById('google-login-btn'); 
 
         // Firebase instances
         let db = null; 
@@ -223,7 +215,7 @@
         let isFirebaseActive = false;
         let userId = null;
         let detailedUnsubscribe = null; 
-        let isAuthListenerInitialized = false; // To ensure data loading only happens once on initial auth
+        let isAuthListenerInitialized = false; 
 
         // Local state
         let currentScheduleDateString = null;
@@ -291,6 +283,22 @@
                 addButton.disabled = false;
             }
         };
+        
+        // Helper function to reset the Google Sign-in button content
+        const resetGoogleLoginButton = () => {
+            googleLoginBtn.disabled = false;
+            // Full reset including the SVG to ensure the icon and text are correctly displayed
+            googleLoginBtn.innerHTML = `
+                <svg class="h-5 w-5 mr-2" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M21.35 12.04c0-.79-.07-1.54-.19-2.27H12v4.51h4.84c-.2 1.14-.84 2.1-1.74 2.74v2.54h3.28c1.92-1.77 3.03-4.38 3.03-7.72z" fill="#4285F4"/>
+                    <path d="M12 21c3.24 0 5.95-1.07 7.93-2.91l-3.28-2.54c-.9 0-2.07.65-2.65 1.76-1.55 1.48-3.4 2.45-5.65 2.45-3.15 0-5.83-2.01-6.79-4.71H2.03v2.54C3.89 19.92 7.63 21 12 21z" fill="#34A853"/>
+                    <path d="M5.21 15.69c-.2-.6-.31-1.23-.31-1.87s.11-1.27.31-1.87V9.41H2.03C1.3 11.04 1 12.52 1 14c0 1.48.3-2.96.9-4.59l3.28 2.27z" fill="#FBBC05"/>
+                    <path d="M12 7.73c1.77 0 3.32.61 4.54 1.78l2.94-2.94C17.95 3.19 15.24 2 12 2 7.63 2 3.89 3.08 2.03 4.41l3.18 2.32C6.17 6.72 8.85 7.73 12 7.73z" fill="#EA4335"/>
+                </svg>
+                Sign In with Google (Save Data)
+            `;
+            googleLoginBtn.classList.remove('hidden');
+        };
 
         // --- Firebase Setup and Authentication ---
 
@@ -327,19 +335,18 @@
                 }
                 
             } else {
-                // No user is actively signed in (shouldn't happen in canvas due to custom token)
-                // or user signed out.
+                // No user is actively signed in or user signed out.
                 userId = null;
                 isFirebaseActive = false;
                 userIdDisplay.textContent = 'Session Expired or Not Logged In';
                 
                 // If the listener has already run once, and we end up here, re-try anonymous sign-in
-                if (isAuthListenerInitialized) {
+                if (isAuthListenerInitialized && auth) {
                      signInAnonymously(auth).then(cred => {
                         userId = cred.user.uid;
                         isFirebaseActive = true;
                         userIdDisplay.textContent = `User ID: ${userId} (New Anonymous)`;
-                        googleLoginBtn.classList.remove('hidden'); // Show button to upgrade session
+                        resetGoogleLoginButton(); // Show button to upgrade session
                     }).catch(error => {
                         console.error("Anonymous sign-in failed:", error);
                         // Fallback to UUID if all Auth methods fail
@@ -351,7 +358,7 @@
             
             // Show login button if user is temporary/anonymous
             if (user && user.isAnonymous) {
-                googleLoginBtn.classList.remove('hidden');
+                resetGoogleLoginButton(); // Ensure button is shown and reset
             }
 
             hideLoading();
@@ -364,8 +371,8 @@
             try {
                 setLogLevel('Debug'); 
                 
+                // CRITICAL CHECK: Ensure a valid system configuration was loaded
                 if (!firebaseConfig || !firebaseConfig.projectId) {
-                    // Log debug info
                     console.error("--- DEBUG INFO: Firebase Config Status ---");
                     console.error("Raw __firebase_config string (or system config):", configString);
                     console.error("Used firebaseConfig object:", firebaseConfig); 
@@ -402,7 +409,6 @@
                 } catch (authError) {
                     console.warn("Initial Firebase Auth failed (Custom/Anonymous):", authError.message);
                     // The onAuthStateChanged listener will handle the resulting unauthenticated state
-                    // or fall back to UUID if needed.
                 }
 
             } catch (error) {
@@ -438,15 +444,9 @@
                 console.log("Successfully signed in with Google.");
             } catch (error) {
                 console.error("Google Sign-in failed:", error);
-                // Handle specific error codes if needed (e.g., popup closed)
-                // For simplicity, just log and reset the button.
             } finally {
-                googleLoginBtn.disabled = false;
-                googleLoginBtn.innerHTML = `
-                    <svg class="h-5 w-5 mr-2" viewBox="0 0 24 24" fill="currentColor">...</svg>
-                    Sign In with Google (Save Data)
-                `; // Revert innerHTML for the icon
-                googleLoginBtn.classList.remove('hidden'); // The handleAuthStateChange will hide it on success
+                // Reset the button's visual state on completion or failure
+                resetGoogleLoginButton(); 
             }
         };
 
@@ -823,7 +823,7 @@
             }
         });
         
-        // NEW: Google login button listener
+        // Google login button listener
         googleLoginBtn.addEventListener('click', signInWithGoogle);
 
         // --- Start Application ---
