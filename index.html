@@ -176,24 +176,43 @@
         const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
         const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
         
-        // Removed hardcoded fallback config to prevent auth/configuration-not-found error
-        // caused by using an inactive API key. We will rely solely on __firebase_config.
+        // --- USER CONFIGURATION BLOCK (FOR NON-CANVAS ENVIRONMENTS LIKE GITHUB) ---
+        // To run this app outside the Canvas, get your Firebase project's config object
+        // and paste it below. You must enable Anonymous and Google Sign-In methods in your project.
+        // If running in the Canvas, the system-provided config will override this.
+        const USER_FIREBASE_CONFIG = {
+            apiKey: "AIzaSyBNIUQpPPas83-Sk8Ux0LX270yZFYSIy0Q",
+            authDomain: "take-the-pills.firebaseapp.com",
+            projectId: "take-the-pills",
+            storageBucket: "take-the-pills.firebasestorage.app",
+            messagingSenderId: "485269196768",
+            appId: "1:485269196768:web:16ddcb88ade8ba404ae585",
+            measurementId: "G-EP5JVDCG1L"
+        };
+        // --- END USER CONFIGURATION BLOCK ---
+
         let firebaseConfig = null;
-        let configString = ''; 
+        let isSystemConfig = false;
         
         try {
             const systemConfigString = typeof __firebase_config !== 'undefined' ? __firebase_config : '{}';
-            configString = systemConfigString;
             const systemConfig = JSON.parse(systemConfigString);
             
             if (systemConfig && systemConfig.projectId) {
-                console.log("Using system-provided Firebase configuration.");
+                // System config found (Running in Canvas)
                 firebaseConfig = systemConfig;
+                isSystemConfig = true;
+                console.log("Using system-provided Firebase configuration.");
+            } else if (USER_FIREBASE_CONFIG && USER_FIREBASE_CONFIG.projectId) {
+                // System config missing, but user provided one (Running on GitHub/Local)
+                firebaseConfig = USER_FIREBASE_CONFIG;
+                console.log("Using user-provided Firebase configuration.");
             } else {
-                console.log("System configuration missing or invalid. Firebase will be disabled gracefully.");
+                // No configuration found
+                console.log("System configuration missing and no user config provided. Firebase will be disabled gracefully.");
             }
         } catch (e) {
-            console.error("Failed to parse __firebase_config JSON string. Firebase will be disabled.", e);
+            console.error("Failed to process Firebase config.", e);
         }
         // --- END ENVIRONMENT VARIABLES ---
 
@@ -371,15 +390,15 @@
             try {
                 setLogLevel('Debug'); 
                 
-                // CRITICAL CHECK: Ensure a valid system configuration was loaded
+                // CRITICAL CHECK: Ensure a valid system configuration was loaded or provided
                 if (!firebaseConfig || !firebaseConfig.projectId) {
                     console.error("--- DEBUG INFO: Firebase Config Status ---");
-                    console.error("Raw __firebase_config string (or system config):", configString);
+                    // console.error("Raw __firebase_config string (or system config):", configString); // Removed for cleaner non-Canvas environment
                     console.error("Used firebaseConfig object:", firebaseConfig); 
                     console.error("----------------------------------------");
                     
                     isFirebaseActive = false;
-                    reminderListElement.innerHTML = `<p class="text-center text-red-500 py-4">Database features disabled: Configuration missing/invalid.</p>`;
+                    reminderListElement.innerHTML = `<p class="text-center text-red-500 py-4">Database features disabled: Configuration missing/invalid. Add your config to USER_FIREBASE_CONFIG.</p>`;
                     addButton.textContent = 'Config Failed';
                     addButton.disabled = true;
                     userIdDisplay.textContent = 'Config Failed: Database Disconnected';
@@ -397,12 +416,14 @@
                 
                 // 2. Perform the initial sign-in for the environment
                 try {
-                    if (initialAuthToken) {
+                    // We only use the initialAuthToken if we are running in the system environment
+                    // AND if the token is present.
+                    if (isSystemConfig && initialAuthToken) {
                         // Use environment token (Canvas)
                         await signInWithCustomToken(auth, initialAuthToken);
                         console.log("Signed in with custom token.");
                     } else {
-                        // Fallback to anonymous sign-in
+                        // Fallback to anonymous sign-in (required for GitHub/local run or if token is missing)
                         await signInAnonymously(auth);
                         console.log("Signed in anonymously.");
                     }
@@ -614,7 +635,7 @@
                                        (totalCount > 0) ? 'bg-purple-500' : 'bg-gray-300';
 
                 const tile = document.createElement('div');
-                tile.className = `weekly-tile flex flex-col items-center p-2 rounded-xl text-xs font-medium ${activeClass} bg-white border border-gray-200`;
+                tile.className = `weekly-tile flex flex-col items-center p-2 border border-gray-200 rounded-xl text-xs font-medium ${activeClass} bg-white`;
                 tile.setAttribute('data-date', dateString);
                 tile.onclick = () => setDetailedScheduleDate(dateString); 
 
