@@ -139,12 +139,13 @@
 
     <!-- Firebase SDKs -->
     <script type="module">
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        // UPGRADING Firebase SDKs to v12.6.0
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/12.6.0/firebase-app.js";
         import { 
             getAuth, 
             signInAnonymously,
             signInWithCustomToken 
-        } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        } from "https://www.gstatic.com/firebasejs/12.6.0/firebase-auth.js";
         import { 
             getFirestore, 
             collection, 
@@ -156,17 +157,15 @@
             where,
             updateDoc,
             setLogLevel 
-        } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        } from "https://www.gstatic.com/firebasejs/12.6.0/firebase-firestore.js";
 
         // --- ENVIRONMENT VARIABLES (MANDATORY USE) ---
         // These variables are provided by the canvas environment.
         const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
         const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
         
-        // Configuration provided by the user/system.
-        // This is your hardcoded FALLBACK configuration to ensure the app works 
-        // even if the environment variable (__firebase_config) is empty or invalid.
-        let firebaseConfig = {
+        // This is the hardcoded configuration for the user's project, used as a robust fallback.
+        const FALLBACK_FIREBASE_CONFIG = {
             apiKey: "AIzaSyBNIUQpPPas83-Sk8Ux0LX270yZFYSIy0Q",
             authDomain: "take-the-pills.firebaseapp.com",
             projectId: "take-the-pills",
@@ -175,20 +174,22 @@
             appId: "1:485269196768:web:16ddcb88ade8ba404ae585",
             measurementId: "G-EP5JVDCG1L"
         };
-        
+
+        let firebaseConfig = FALLBACK_FIREBASE_CONFIG; // Start with the fallback
         let configString = ''; 
         
         try {
-            // Attempt to load the configuration from the system variable __firebase_config
+            // Attempt to load and parse the configuration from the system variable __firebase_config
             const systemConfigString = typeof __firebase_config !== 'undefined' ? __firebase_config : '{}';
             configString = systemConfigString;
             const systemConfig = JSON.parse(systemConfigString);
             
-            // If the system provided a valid, non-empty config, use it instead of the fallback.
+            // If the system provided a valid configuration (checking for projectId), use it.
             if (systemConfig && systemConfig.projectId) {
                 console.log("Using system-provided Firebase configuration.");
                 firebaseConfig = systemConfig;
             } else {
+                // If system config is empty or invalid, keep the default (FALLBACK_FIREBASE_CONFIG)
                 console.log("System configuration missing or invalid. Using hardcoded fallback configuration.");
             }
         } catch (e) {
@@ -305,7 +306,7 @@
                     // Log debug info
                     console.error("--- DEBUG INFO: Firebase Config Status ---");
                     console.error("Raw __firebase_config string (or system config):", configString);
-                    console.error("Used firebaseConfig object:", firebaseConfig);
+                    console.error("Used firebaseConfig object:", firebaseConfig); 
                     console.error("----------------------------------------");
                     
                     // Handle complete failure gracefully and return
