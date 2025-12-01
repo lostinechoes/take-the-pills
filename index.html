@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Pill Time Reminder</title>
     <!-- Load Tailwind CSS -->
-    <link href="/style.css" rel="stylesheet">
+    <script src="https://cdn.tailwindcss.com"></script>
     <!-- Load Inter font -->
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
     
@@ -147,20 +147,21 @@
             setLogLevel 
         } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
-        // --- HARDCODED FIREBASE CONFIGURATION (Renamed for clarity) ---
-        const FIREBASE_CONFIG = {
-            apiKey: "AIzaSyBNIUQpPPas83-Sk8Ux0LX270yZFYSIy0Q",
-            authDomain: "take-the-pills.firebaseapp.com",
-            projectId: "take-the-pills",
-            storageBucket: "take-the-pills.firebasestorage.app",
-            messagingSenderId: "485269196768",
-            appId: "1:485269196768:web:16ddcb88ade8ba404ae585",
-            measurementId: "G-EP5JVDCG1L"
-        };
-        
-        // Global variables provided by the environment (if available)
-        const appId = typeof __app_id !== 'undefined' ? __app_id : FIREBASE_CONFIG.projectId;
+        // --- ENVIRONMENT VARIABLES (MANDATORY USE) ---
+        // These variables are provided by the canvas environment.
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
         const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+        
+        let firebaseConfig = {};
+        try {
+            // Parse the __firebase_config string provided by the environment
+            // Ensure proper fallback if the variable is not defined or invalid
+            const configString = typeof __firebase_config !== 'undefined' ? __firebase_config : '{}';
+            firebaseConfig = JSON.parse(configString);
+        } catch (e) {
+            console.error("Failed to parse __firebase_config. Firestore operations may fail.", e);
+        }
+        // --- END ENVIRONMENT VARIABLES ---
 
         // UI Elements
         const loadingElement = document.getElementById('loading');
@@ -267,7 +268,12 @@
                 setLogLevel('Debug'); 
                 
                 // 1. Initialize Firebase with the provided configuration
-                const app = initializeApp(FIREBASE_CONFIG);
+                // Ensure firebaseConfig is not empty before attempting to initialize
+                if (Object.keys(firebaseConfig).length === 0) {
+                    throw new Error("Firebase configuration is missing or invalid.");
+                }
+
+                const app = initializeApp(firebaseConfig);
                 auth = getAuth(app);
                 db = getFirestore(app);
                 
@@ -698,6 +704,8 @@
                 }
 
                 window.addEventListener('load', () => {
+                    // The service worker file is now generated in the companion file, 
+                    // so this registration should succeed without a 404.
                     navigator.serviceWorker.register('./service-worker.js', { scope: './' })
                         .then(registration => {
                             console.log('ServiceWorker registration successful with scope: ', registration.scope);
