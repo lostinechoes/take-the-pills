@@ -8,7 +8,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
   <link rel="manifest" href="./manifest.json">
   <meta name="theme-color" content="#8B5CF6">
-  <link rel="apple-touch-icon" href="https://placehold.co/192x192/8B5CF6/ffffff?text=Pill">
+  <link rel="apple-touch-icon" href="./icons/icon-192.png">
   <style>
     body { font-family: 'Inter', sans-serif; background-color: #f0f4f8; }
     .app-container { max-width: 420px; box-shadow: 0 10px 30px rgba(0,0,0,0.1); }
@@ -247,18 +247,17 @@
     };
 
     // --- Clear History ---
-    const clearHistoryBtn = document.getElementById('clear-history-btn');
     clearHistoryBtn.addEventListener('click', async () => {
       const user = auth.currentUser;
       if (!user) return;
       const ref = getRemindersCollectionRef(user.uid);
       const q = query(ref, where("isTaken", "==", true));
-      onSnapshot(q, snapshot => {
-        snapshot.forEach(async docSnap => {
-          await deleteReminder(user.uid, docSnap.id);
-        });
+      const snapshot = await getDocs(q);
+      snapshot.forEach(async docSnap => {
+        await deleteReminder(user.uid, docSnap.id);
       });
     });
+
 
     // --- Download History (.txt) ---
     const downloadHistoryBtn = document.getElementById('download-history-btn');
@@ -304,5 +303,6 @@
 </script>
 </body>
 </html>
+
 
 
