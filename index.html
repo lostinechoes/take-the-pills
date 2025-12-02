@@ -128,6 +128,8 @@
   const historyListElement = document.getElementById('history-list');
   const weeklySummaryElement = document.getElementById('weekly-summary');
   const form = document.getElementById('reminder-form');
+  const googleLoginBtn = document.getElementById('google-login-btn');
+  const userIdDisplay = document.getElementById('user-id-display');
 
   // Status banner helpers
   const showStatus = (msg, cls) => {
@@ -190,9 +192,12 @@
         </div>
       `;
       card.querySelector('button').addEventListener('click', () => {
+        // defensively check auth
+        if (!auth.currentUser) { showStatus("Sign in required", "bg-yellow-500 text-black"); return; }
         toggleTakenStatus(auth.currentUser.uid, rem.id, rem.isTaken);
       });
       card.querySelectorAll('button')[1].addEventListener('click', () => {
+        if (!auth.currentUser) { showStatus("Sign in required", "bg-yellow-500 text-black"); return; }
         deleteReminder(auth.currentUser.uid, rem.id);
       });
       reminderListElement.appendChild(card);
@@ -273,13 +278,16 @@
         if (data.isTaken) takenReminders.push({ id: docSnap.id, ...data });
       });
       renderWeeklySummary(reminders, takenReminders);
+    }, error => {
+      console.error("Snapshot listen error:", error);
+      showStatus("Failed to sync reminders. Check console.", "bg-red-500 text-white");
     });
   };
 
   // --- Clear History ---
   clearHistoryBtn.addEventListener('click', async () => {
     const user = auth.currentUser;
-    if (!user) return;
+    if (!user) { showStatus("Sign in required", "bg-yellow-500 text-black"); return; }
     const ref = getRemindersCollectionRef(user.uid);
     const q = query(ref, where("isTaken", "==", true));
     const snapshot = await getDocs(q);
@@ -291,7 +299,7 @@
   // --- Download History (.txt) ---
   downloadHistoryBtn.addEventListener('click', async () => {
     const user = auth.currentUser;
-    if (!user) return;
+    if (!user) { showStatus("Sign in required", "bg-yellow-500 text-black"); return; }
     const ref = getRemindersCollectionRef(user.uid);
     const q = query(ref, where("isTaken", "==", true));
     const snapshot = await getDocs(q);
@@ -313,12 +321,43 @@
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
     const user = auth.currentUser;
-    if (!user) return;
+    if (!user) { showStatus("Sign in required", "bg-yellow-500 text-black"); return; }
     const name = document.getElementById('medicine-name').value;
     const date = document.getElementById('intake-date').value;
     const time = document.getElementById('intake-time').value;
     await addReminder(user.uid, name, date, time);
     form.reset();
+  });
+
+  // --- Authentication flow ---
+  onAuthStateChanged(auth, (user) => {
+    if (user) {
+      userIdDisplay.textContent = `User: ${user.uid}`;
+      // load data once we have a user
+      loadWeeklySummary(user.uid);
+      googleLoginBtn.classList.add('hidden');
+    } else {
+      userIdDisplay.textContent = 'Signing in...';
+      // try anonymous sign-in; fallback shows Google button if it fails
+      signInAnonymously(auth).catch(err => {
+        console.warn('Anonymous sign-in failed:', err);
+        showStatus("Sign-in failed. Use Google Sign-in.", "bg-red-500 text-white");
+        googleLoginBtn.classList.remove('hidden');
+      });
+    }
+  });
+
+  // Google sign-in button
+  googleLoginBtn.addEventListener('click', async () => {
+    try {
+      const provider = new GoogleAuthProvider();
+      await signInWithPopup(auth, provider);
+      googleLoginBtn.classList.add('hidden');
+      hideStatus();
+    } catch (err) {
+      console.error('Google sign-in failed:', err);
+      showStatus("Google sign-in failed — check console", "bg-red-500 text-white");
+    }
   });
 </script>
 
@@ -333,8 +372,3 @@
 
 </body>
 </html>
-
-
-
-
-
