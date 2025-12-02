@@ -86,16 +86,8 @@
     </form>
   </div>
   
-  <script>
-  if ("serviceWorker" in navigator) {
-    navigator.serviceWorker.register("./service-worker.js")
-      .then(() => console.log("Service Worker registered"))
-      .catch(err => console.error("Service Worker registration failed:", err));
-    }
-  </script>
-
-  <!-- Firebase SDKs -->
-  <script>
+    <!-- Firebase SDKs -->
+  <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/12.6.0/firebase-app.js";
     import { getAuth, signInAnonymously, GoogleAuthProvider, signInWithPopup, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/12.6.0/firebase-auth.js";
     import { getFirestore, collection, query, onSnapshot, addDoc, deleteDoc, doc, where, updateDoc, enableIndexedDbPersistence } from "https://www.gstatic.com/firebasejs/12.6.0/firebase-firestore.js";
@@ -304,9 +296,19 @@
       form.reset();
     });
   
-</script>
+  </script>
+  
+  <!-- Service Worker Registration -->
+  <script>
+    if ("serviceWorker" in navigator) {
+      navigator.serviceWorker.register("./service-worker.js")
+        .then(() => console.log("Service Worker registered"))
+        .catch(err => console.error("Service Worker registration failed:", err));
+    }
+  </script>
 </body>
 </html>
+
 
 
 
