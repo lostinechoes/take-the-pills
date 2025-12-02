@@ -268,27 +268,28 @@
 
 
     // --- Download History (.txt) ---
-    const downloadHistoryBtn = document.getElementById('download-history-btn');
+    import { getDocs } from "https://www.gstatic.com/firebasejs/12.6.0/firebase-firestore.js";
+
     downloadHistoryBtn.addEventListener('click', async () => {
       const user = auth.currentUser;
       if (!user) return;
       const ref = getRemindersCollectionRef(user.uid);
       const q = query(ref, where("isTaken", "==", true));
-      onSnapshot(q, snapshot => {
-        let content = "History of Taken Meds\n\n";
-        snapshot.forEach(docSnap => {
-          const data = docSnap.data();
-          content += `${data.name} — ${data.date} ${data.time} | Taken at: ${data.takenAt}\n`;
-        });
-        const blob = new Blob([content], { type: "text/plain" });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement("a");
-        a.href = url;
-        a.download = "meds-history.txt";
-        a.click();
-        URL.revokeObjectURL(url);
+      const snapshot = await getDocs(q);
+      let content = "History of Taken Meds\n\n";
+      snapshot.forEach(docSnap => {
+        const data = docSnap.data();
+        content += `${data.name} — ${data.date} ${data.time} | Taken at: ${data.takenAt}\n`;
       });
+      const blob = new Blob([content], { type: "text/plain" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "meds-history.txt";
+      a.click();
+      URL.revokeObjectURL(url);
     });
+
 
     // --- Form Handling ---
     const form = document.getElementById('reminder-form');
@@ -306,6 +307,7 @@
 </script>
 </body>
 </html>
+
 
 
 
