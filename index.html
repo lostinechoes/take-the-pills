@@ -9,6 +9,7 @@
   <link rel="manifest" href="./manifest.json">
   <meta name="theme-color" content="#8B5CF6">
   <link rel="apple-touch-icon" href="./icons/icon-192.png">
+
   <style>
     body { font-family: 'Inter', sans-serif; background-color: #f0f4f8; }
     .app-container { max-width: 420px; box-shadow: 0 10px 30px rgba(0,0,0,0.1); }
@@ -85,230 +86,253 @@
       </button>
     </form>
   </div>
-  
-    <!-- Firebase SDKs -->
+
+  <!-- Firebase SDKs -->
   <script type="module">
-    import { initializeApp } from "https://www.gstatic.com/firebasejs/12.6.0/firebase-app.js";
-    import { getAuth, signInAnonymously, GoogleAuthProvider, signInWithPopup, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/12.6.0/firebase-auth.js";
-    import { getFirestore, collection, query, onSnapshot, addDoc, deleteDoc, doc, where, updateDoc, enableIndexedDbPersistence } from "https://www.gstatic.com/firebasejs/12.6.0/firebase-firestore.js";
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/12.6.0/firebase-app.js";
+  import { firebaseConfig } from "./scripts/firebase-config.js";
+  import {
+    getAuth,
+    signInAnonymously,
+    GoogleAuthProvider,
+    signInWithPopup,
+    onAuthStateChanged
+  } from "https://www.gstatic.com/firebasejs/12.6.0/firebase-auth.js";
+  import {
+    getFirestore,
+    collection,
+    query,
+    onSnapshot,
+    addDoc,
+    deleteDoc,
+    doc,
+    where,
+    updateDoc,
+    enableIndexedDbPersistence,
+    getDocs
+  } from "https://www.gstatic.com/firebasejs/12.6.0/firebase-firestore.js";
 
-    import { firebaseConfig } from "./scripts/firebase-config.js";
-    const app = initializeApp(firebaseConfig);
-    const auth = getAuth(app);
-    const db = getFirestore(app);
-    enableIndexedDbPersistence(db).catch(err => console.warn("Persistence issue:", err));
+  const app = initializeApp(firebaseConfig);
+  const auth = getAuth(app);
+  const db = getFirestore(app);
+  enableIndexedDbPersistence(db).catch(err => console.warn("Persistence issue:", err));
 
-    let activeDateString = new Date().toISOString().split('T')[0]; // Default highlight = Today
+  let activeDateString = new Date().toISOString().split('T')[0]; // Default highlight = Today
 
-    // Status banner
-    const statusBanner = document.getElementById('status-banner');
-    const showStatus = (msg, cls) => { statusBanner.textContent = msg; statusBanner.className = `fixed top-0 left-0 w-full text-center py-2 text-sm font-semibold ${cls}`; statusBanner.classList.remove('hidden'); };
-    const hideStatus = () => statusBanner.classList.add('hidden');
-    window.addEventListener('online', () => { showStatus("Back online — syncing data…","bg-green-500 text-white"); setTimeout(hideStatus,3000); });
-    window.addEventListener('offline', () => { showStatus("You’re offline — changes will sync later","bg-yellow-500 text-black"); });
+  // DOM references
+  const statusBanner = document.getElementById('status-banner');
+  const clearHistoryBtn = document.getElementById('clear-history-btn');
+  const downloadHistoryBtn = document.getElementById('download-history-btn');
+  const reminderListElement = document.getElementById('reminder-list');
+  const scheduleTitle = document.getElementById('schedule-title');
+  const historyListElement = document.getElementById('history-list');
+  const weeklySummaryElement = document.getElementById('weekly-summary');
+  const form = document.getElementById('reminder-form');
 
-    // Firestore helpers
-    const getRemindersCollectionRef = (uid) => collection(db, `users/${uid}/reminders`);
+  // Status banner helpers
+  const showStatus = (msg, cls) => {
+    statusBanner.textContent = msg;
+    statusBanner.className = `fixed top-0 left-0 w-full text-center py-2 text-sm font-semibold ${cls}`;
+    statusBanner.classList.remove('hidden');
+  };
+  const hideStatus = () => statusBanner.classList.add('hidden');
+  window.addEventListener('online', () => {
+    showStatus("Back online — syncing data…", "bg-green-500 text-white");
+    setTimeout(hideStatus, 3000);
+  });
+  window.addEventListener('offline', () => {
+    showStatus("You’re offline — changes will sync later", "bg-yellow-500 text-black");
+  });
 
-    const addReminder = async (uid, name, date, time) => {
-      await addDoc(getRemindersCollectionRef(uid), {
-        name, date, time,
-        isTaken: false,
-        takenAt: null,
-        created_at: new Date().toISOString()
-      });
-    };
+  // Firestore helpers
+  const getRemindersCollectionRef = (uid) => collection(db, `users/${uid}/reminders`);
 
-    const toggleTakenStatus = async (uid, docId, currentStatus) => {
-      await updateDoc(doc(getRemindersCollectionRef(uid), docId), {
-        isTaken: !currentStatus,
-        takenAt: !currentStatus ? new Date().toISOString() : null
-      });
-    };
-
-    const deleteReminder = async (uid, docId) => {
-      await deleteDoc(doc(getRemindersCollectionRef(uid), docId));
-    };
-
-    // --- Daily Reminders Rendering ---
-    const reminderListElement = document.getElementById('reminder-list');
-    const scheduleTitle = document.getElementById('schedule-title');
-    let activeDateString = new Date().toISOString().split('T')[0]; // Default highlight = Today
-
-    const renderDailyReminders = (dateString, reminders) => {
-      reminderListElement.innerHTML = '';
-      if (reminders.length === 0) {
-        reminderListElement.innerHTML = `<p class="text-center text-gray-400 py-4">No reminders for this day.</p>`;
-        return;
-      }
-      reminders.forEach(rem => {
-        const card = document.createElement('div');
-        card.className = "reminder-card flex justify-between items-center p-3 rounded-lg bg-gray-50";
-        card.innerHTML = `
-          <div>
-            <p class="font-semibold text-gray-700">${rem.name}</p>
-            <p class="text-xs text-gray-500">${rem.time}</p>
-          </div>
-          <div class="flex space-x-2">
-            <button class="px-2 py-1 text-xs rounded ${rem.isTaken ? 'bg-green-500 text-white' : 'bg-purple-500 text-white'}">
-              ${rem.isTaken ? 'Taken' : 'Mark Taken'}
-            </button>
-            <button class="px-2 py-1 text-xs rounded bg-red-500 text-white">Delete</button>
-          </div>
-        `;
-        card.querySelector('button').addEventListener('click', () => {
-          toggleTakenStatus(auth.currentUser.uid, rem.id, rem.isTaken);
-        });
-        card.querySelectorAll('button')[1].addEventListener('click', () => {
-          deleteReminder(auth.currentUser.uid, rem.id);
-        });
-        reminderListElement.appendChild(card);
-      });
-    };
-
-    // --- History Rendering ---
-    const historyListElement = document.getElementById('history-list');
-    const renderHistory = (takenReminders) => {
-      historyListElement.innerHTML = '';
-      if (takenReminders.length === 0) {
-        historyListElement.innerHTML = `<p class="text-center text-gray-400 py-2">No history yet.</p>`;
-        return;
-      }
-      takenReminders.forEach(rem => {
-        const item = document.createElement('div');
-        item.className = "flex justify-between items-center p-2 rounded-lg bg-white shadow-sm";
-        item.innerHTML = `
-          <span class="text-sm text-gray-700">${rem.name} — ${rem.date} ${rem.time}</span>
-          <span class="text-xs text-gray-500">Taken at ${rem.takenAt ? new Date(rem.takenAt).toLocaleString() : ''}</span>
-        `;
-        historyListElement.appendChild(item);
-      });
-    };
-
-    // --- Weekly Summary ---
-    const weeklySummaryElement = document.getElementById('weekly-summary');
-    const renderWeeklySummary = (remindersByDate, takenReminders) => {
-      weeklySummaryElement.innerHTML = '';
-      const today = new Date();
-      for (let i = 0; i < 7; i++) {
-        const date = new Date(today);
-        date.setDate(today.getDate() + i);
-        const dateString = date.toISOString().split('T')[0];
-        const dayName = date.toLocaleDateString('en-US', { weekday: 'short' });
-        const dayReminders = remindersByDate[dateString] || [];
-        const totalCount = dayReminders.length;
-        const takenCount = dayReminders.filter(r => r.isTaken).length;
-        const countText = totalCount > 0 ? `${takenCount}/${totalCount}` : '0';
-        const pillColorClass = (totalCount > 0 && takenCount === totalCount) ? 'bg-green-500' : 
-                               (totalCount > 0) ? 'bg-purple-500' : 'bg-gray-300';
-        const tile = document.createElement('div');
-        tile.className = `weekly-tile flex flex-col items-center p-2 border border-gray-200 rounded-xl text-xs font-medium bg-white ${activeDateString===dateString?'active':''}`;
-        tile.innerHTML = `
-          <span>${i===0?'Today':i===1?'Tmrw':dayName}</span>
-          <span class="pill-count px-2 mt-1 rounded-full ${pillColorClass} text-white">${countText}</span>
-        `;
-        tile.addEventListener('click', () => {
-          activeDateString = dateString;
-          scheduleTitle.textContent = `Schedule for ${date.toDateString()}`;
-          renderDailyReminders(dateString, dayReminders);
-          document.querySelectorAll('.weekly-tile').forEach(t => t.classList.remove('active'));
-          tile.classList.add('active');
-        });
-        weeklySummaryElement.appendChild(tile);
-
-        // Auto-load today's schedule on first render
-        if (i===0 && activeDateString===dateString) {
-          scheduleTitle.textContent = `Schedule for ${date.toDateString()}`;
-          renderDailyReminders(dateString, dayReminders);
-        }
-      }
-      renderHistory(takenReminders);
-    };
-
-    const loadWeeklySummary = (uid) => {
-      const ref = getRemindersCollectionRef(uid);
-      const today = new Date();
-      const startDateString = today.toISOString().split('T')[0];
-      const endDate = new Date();
-      endDate.setDate(today.getDate() + 6);
-      const endDateString = endDate.toISOString().split('T')[0];
-      const q = query(ref, where("date", ">=", startDateString), where("date", "<=", endDateString));
-      onSnapshot(q, snapshot => {
-        const reminders = {};
-        const takenReminders = [];
-        snapshot.forEach(docSnap => {
-          const data = docSnap.data();
-          if (!reminders[data.date]) reminders[data.date] = [];
-          reminders[data.date].push({ id: docSnap.id, ...data });
-          if (data.isTaken) takenReminders.push({ id: docSnap.id, ...data });
-        });
-        renderWeeklySummary(reminders, takenReminders);
-      });
-    };
-
-    // --- Clear History ---
-    clearHistoryBtn.addEventListener('click', async () => {
-      const user = auth.currentUser;
-      if (!user) return;
-      const ref = getRemindersCollectionRef(user.uid);
-      const q = query(ref, where("isTaken", "==", true));
-      const snapshot = await getDocs(q);
-      snapshot.forEach(async docSnap => {
-        await deleteReminder(user.uid, docSnap.id);
-      });
+  const addReminder = async (uid, name, date, time) => {
+    await addDoc(getRemindersCollectionRef(uid), {
+      name, date, time,
+      isTaken: false,
+      takenAt: null,
+      created_at: new Date().toISOString()
     });
+  };
 
+  const toggleTakenStatus = async (uid, docId, currentStatus) => {
+    await updateDoc(doc(getRemindersCollectionRef(uid), docId), {
+      isTaken: !currentStatus,
+      takenAt: !currentStatus ? new Date().toISOString() : null
+    });
+  };
 
-    // --- Download History (.txt) ---
-    import { getDocs } from "https://www.gstatic.com/firebasejs/12.6.0/firebase-firestore.js";
+  const deleteReminder = async (uid, docId) => {
+    await deleteDoc(doc(getRemindersCollectionRef(uid), docId));
+  };
 
-    downloadHistoryBtn.addEventListener('click', async () => {
-      const user = auth.currentUser;
-      if (!user) return;
-      const ref = getRemindersCollectionRef(user.uid);
-      const q = query(ref, where("isTaken", "==", true));
-      const snapshot = await getDocs(q);
-      let content = "History of Taken Meds\n\n";
+  // Daily reminders rendering
+  const renderDailyReminders = (dateString, reminders) => {
+    reminderListElement.innerHTML = '';
+    if (reminders.length === 0) {
+      reminderListElement.innerHTML = `<p class="text-center text-gray-400 py-4">No reminders for this day.</p>`;
+      return;
+    }
+    reminders.forEach(rem => {
+      const card = document.createElement('div');
+      card.className = "reminder-card flex justify-between items-center p-3 rounded-lg bg-gray-50";
+      card.innerHTML = `
+        <div>
+          <p class="font-semibold text-gray-700">${rem.name}</p>
+          <p class="text-xs text-gray-500">${rem.time}</p>
+        </div>
+        <div class="flex space-x-2">
+          <button class="px-2 py-1 text-xs rounded ${rem.isTaken ? 'bg-green-500 text-white' : 'bg-purple-500 text-white'}">
+            ${rem.isTaken ? 'Taken' : 'Mark Taken'}
+          </button>
+          <button class="px-2 py-1 text-xs rounded bg-red-500 text-white">Delete</button>
+        </div>
+      `;
+      card.querySelector('button').addEventListener('click', () => {
+        toggleTakenStatus(auth.currentUser.uid, rem.id, rem.isTaken);
+      });
+      card.querySelectorAll('button')[1].addEventListener('click', () => {
+        deleteReminder(auth.currentUser.uid, rem.id);
+      });
+      reminderListElement.appendChild(card);
+    });
+  };
+
+  // History rendering
+  const renderHistory = (takenReminders) => {
+    historyListElement.innerHTML = '';
+    if (takenReminders.length === 0) {
+      historyListElement.innerHTML = `<p class="text-center text-gray-400 py-2">No history yet.</p>`;
+      return;
+    }
+    takenReminders.forEach(rem => {
+      const item = document.createElement('div');
+      item.className = "flex justify-between items-center p-2 rounded-lg bg-white shadow-sm";
+      item.innerHTML = `
+        <span class="text-sm text-gray-700">${rem.name} — ${rem.date} ${rem.time}</span>
+        <span class="text-xs text-gray-500">Taken at ${rem.takenAt ? new Date(rem.takenAt).toLocaleString() : ''}</span>
+      `;
+      historyListElement.appendChild(item);
+    });
+  };
+
+  // Weekly summary rendering
+  const renderWeeklySummary = (remindersByDate, takenReminders) => {
+    weeklySummaryElement.innerHTML = '';
+    const today = new Date();
+    for (let i = 0; i < 7; i++) {
+      const date = new Date(today);
+      date.setDate(today.getDate() + i);
+      const dateString = date.toISOString().split('T')[0];
+      const dayName = date.toLocaleDateString('en-US', { weekday: 'short' });
+      const dayReminders = remindersByDate[dateString] || [];
+      const totalCount = dayReminders.length;
+      const takenCount = dayReminders.filter(r => r.isTaken).length;
+      const countText = totalCount > 0 ? `${takenCount}/${totalCount}` : '0';
+      const pillColorClass = (totalCount > 0 && takenCount === totalCount) ? 'bg-green-500' :
+                             (totalCount > 0) ? 'bg-purple-500' : 'bg-gray-300';
+      const tile = document.createElement('div');
+      tile.className = `weekly-tile flex flex-col items-center p-2 border border-gray-200 rounded-xl text-xs font-medium bg-white ${activeDateString===dateString?'active':''}`;
+      tile.innerHTML = `
+        <span>${i===0?'Today':i===1?'Tmrw':dayName}</span>
+        <span class="pill-count px-2 mt-1 rounded-full ${pillColorClass} text-white">${countText}</span>
+      `;
+      tile.addEventListener('click', () => {
+        activeDateString = dateString;
+        scheduleTitle.textContent = `Schedule for ${date.toDateString()}`;
+        renderDailyReminders(dateString, dayReminders);
+        document.querySelectorAll('.weekly-tile').forEach(t => t.classList.remove('active'));
+        tile.classList.add('active');
+      });
+      weeklySummaryElement.appendChild(tile);
+
+      if (i===0 && activeDateString===dateString) {
+        scheduleTitle.textContent = `Schedule for ${date.toDateString()}`;
+        renderDailyReminders(dateString, dayReminders);
+      }
+    }
+    renderHistory(takenReminders);
+  };
+
+  const loadWeeklySummary = (uid) => {
+    const ref = getRemindersCollectionRef(uid);
+    const today = new Date();
+    const startDateString = today.toISOString().split('T')[0];
+    const endDate = new Date();
+    endDate.setDate(today.getDate() + 6);
+    const endDateString = endDate.toISOString().split('T')[0];
+    const q = query(ref, where("date", ">=", startDateString), where("date", "<=", endDateString));
+    onSnapshot(q, snapshot => {
+      const reminders = {};
+      const takenReminders = [];
       snapshot.forEach(docSnap => {
         const data = docSnap.data();
-        content += `${data.name} — ${data.date} ${data.time} | Taken at: ${data.takenAt}\n`;
+                if (!reminders[data.date]) reminders[data.date] = [];
+        reminders[data.date].push({ id: docSnap.id, ...data });
+        if (data.isTaken) takenReminders.push({ id: docSnap.id, ...data });
       });
-      const blob = new Blob([content], { type: "text/plain" });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = "meds-history.txt";
-      a.click();
-      URL.revokeObjectURL(url);
+      renderWeeklySummary(reminders, takenReminders);
     });
+  };
 
-
-    // --- Form Handling ---
-    const form = document.getElementById('reminder-form');
-    form.addEventListener('submit', async (e) => {
-      e.preventDefault();
-      const user = auth.currentUser;
-      if (!user) return;
-      const name = document.getElementById('medicine-name').value;
-      const date = document.getElementById('intake-date').value;
-      const time = document.getElementById('intake-time').value;
-      await addReminder(user.uid, name, date, time);
-      form.reset();
+  // --- Clear History ---
+  clearHistoryBtn.addEventListener('click', async () => {
+    const user = auth.currentUser;
+    if (!user) return;
+    const ref = getRemindersCollectionRef(user.uid);
+    const q = query(ref, where("isTaken", "==", true));
+    const snapshot = await getDocs(q);
+    snapshot.forEach(async docSnap => {
+      await deleteReminder(user.uid, docSnap.id);
     });
-  
-  </script>
-  
-  <!-- Service Worker Registration -->
-  <script>
-    if ("serviceWorker" in navigator) {
-      navigator.serviceWorker.register("./service-worker.js")
-        .then(() => console.log("Service Worker registered"))
-        .catch(err => console.error("Service Worker registration failed:", err));
-    }
-  </script>
+  });
+
+  // --- Download History (.txt) ---
+  downloadHistoryBtn.addEventListener('click', async () => {
+    const user = auth.currentUser;
+    if (!user) return;
+    const ref = getRemindersCollectionRef(user.uid);
+    const q = query(ref, where("isTaken", "==", true));
+    const snapshot = await getDocs(q);
+    let content = "History of Taken Meds\n\n";
+    snapshot.forEach(docSnap => {
+      const data = docSnap.data();
+      content += `${data.name} — ${data.date} ${data.time} | Taken at: ${data.takenAt}\n`;
+    });
+    const blob = new Blob([content], { type: "text/plain" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "meds-history.txt";
+    a.click();
+    URL.revokeObjectURL(url);
+  });
+
+  // --- Form Handling ---
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const user = auth.currentUser;
+    if (!user) return;
+    const name = document.getElementById('medicine-name').value;
+    const date = document.getElementById('intake-date').value;
+    const time = document.getElementById('intake-time').value;
+    await addReminder(user.uid, name, date, time);
+    form.reset();
+  });
+</script>
+
+<!-- Service Worker Registration -->
+<script>
+  if ("serviceWorker" in navigator) {
+    navigator.serviceWorker.register("./service-worker.js")
+      .then(() => console.log("Service Worker registered"))
+      .catch(err => console.error("Service Worker registration failed:", err));
+  }
+</script>
+
 </body>
 </html>
-
 
 
 
