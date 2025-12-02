@@ -4,7 +4,6 @@ const urlsToCache = [
   "./manifest.json",
   "./icons/icon-192.png",
   "./icons/icon-512.png"
-  // Only include files that actually exist
 ];
 
 self.addEventListener("install", event => {
