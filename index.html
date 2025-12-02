@@ -91,27 +91,9 @@
   <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/12.6.0/firebase-app.js";
   import { firebaseConfig } from "./scripts/firebase-config.js";
-  import {
-  getAuth,
-  signInAnonymously,
-  GoogleAuthProvider,
-  signInWithPopup,
-  onAuthStateChanged
-} from "https://www.gstatic.com/firebasejs/12.6.0/firebase-auth.js";
-
-import {
-  getFirestore,
-  collection,
-  query,
-  onSnapshot,
-  addDoc,
-  deleteDoc,
-  doc,
-  where,
-  updateDoc,
-  enableIndexedDbPersistence
-} from "https://www.gstatic.com/firebasejs/12.6.0/firebase-firestore.js";
-
+  import { getAuth,  signInAnonymously,  GoogleAuthProvider,  signInWithPopup,  onAuthStateChanged} from "https://www.gstatic.com/firebasejs/12.6.0/firebase-auth.js";
+  import { getFirestore, collection, query, onSnapshot,  addDoc,  deleteDoc,  doc,  where,  updateDoc,  enableIndexedDbPersistence} from "https://www.gstatic.com/firebasejs/12.6.0/firebase-firestore.js";
+  import { getDocs } from "https://www.gstatic.com/firebasejs/12.6.0/firebase-firestore.js";
 
   const app = initializeApp(firebaseConfig);
   // ... rest of your Firebase setup
@@ -269,7 +251,7 @@ import {
     };
 
     // --- Clear History ---
-    import { getDocs } from "https://www.gstatic.com/firebasejs/12.6.0/firebase-firestore.js";
+    const clearHistoryBtn = document.getElementById('clear-history-btn');
     clearHistoryBtn.addEventListener('click', async () => {
       const user = auth.currentUser;
       if (!user) return;
@@ -317,15 +299,17 @@ import {
       await addReminder(user.uid, name, date, time);
       form.reset();
     });
+</script>
   <script>
   if ("serviceWorker" in navigator) {
     navigator.serviceWorker.register("./service-worker.js")
       .then(() => console.log("Service Worker registered"))
       .catch(err => console.error("Service Worker registration failed:", err));
   }
-</script>
+  </script>
 </body>
 </html>
+
 
 
 
