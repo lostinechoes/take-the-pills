@@ -33,12 +33,6 @@
       <p class="text-sm text-gray-500">Your scheduled medicine intake</p>
       <p id="user-id-display" class="text-xs text-gray-300 mt-2">Authenticating user...</p>
       <button id="google-login-btn" class="hidden mt-4 w-full flex items-center justify-center py-2 px-4 border border-gray-300 rounded-lg shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500 transition duration-150 ease-in-out">
-        <svg class="h-5 w-5 mr-2" viewBox="0 0 24 24" fill="currentColor">
-          <path d="M21.35 12.04c0-.79-.07-1.54-.19-2.27H12v4.51h4.84c-.2 1.14-.84 2.1-1.74 2.74v2.54h3.28c1.92-1.77 3.03-4.38 3.03-7.72z" fill="#4285F4"/>
-          <path d="M12 21c3.24 0 5.95-1.07 7.93-2.91l-3.28-2.54c-.9 0-2.07.65-2.65 1.76-1.55 1.48-3.4 2.45-5.65 2.45-3.15 0-5.83-2.01-6.79-4.71H2.03v2.54C3.89 19.92 7.63 21 12 21z" fill="#34A853"/>
-          <path d="M5.21 15.69c-.2-.6-.31-1.23-.31-1.87s.11-1.27.31-1.87V9.41H2.03C1.3 11.04 1 12.52 1 14c0 1.48.3-2.96.9-4.59l3.28 2.27z" fill="#FBBC05"/>
-          <path d="M12 7.73c1.77 0 3.32.61 4.54 1.78l2.94-2.94C17.95 3.19 15.24 2 12 2 7.63 2 3.89 3.08 2.03 4.41l3.18 2.32C6.17 6.72 8.85 7.73 12 7.73z" fill="#EA4335"/>
-        </svg>
         Sign In with Google (Save Data)
       </button>
     </header>
@@ -54,6 +48,18 @@
       <h2 id="schedule-title" class="text-xl font-bold text-gray-700 mb-3">Schedule</h2>
       <div id="reminder-list" class="space-y-3 max-h-80 overflow-y-auto p-1">
         <p id="empty-state" class="text-center text-gray-400 py-4">Select a day above to view its schedule.</p>
+      </div>
+    </section>
+
+    <!-- History of Taken Meds -->
+    <section class="bg-gray-50 p-3 rounded-xl shadow-inner mt-4">
+      <h2 class="text-lg font-semibold text-gray-700 mb-3">History of Taken Meds</h2>
+      <div class="flex space-x-2 mb-2">
+        <button id="clear-history-btn" class="px-3 py-1 text-xs rounded bg-red-500 text-white">Clear History</button>
+        <button id="download-history-btn" class="px-3 py-1 text-xs rounded bg-blue-500 text-white">Download History</button>
+      </div>
+      <div id="history-list" class="space-y-2 max-h-40 overflow-y-auto p-1">
+        <p class="text-center text-gray-400 py-2">No history yet.</p>
       </div>
     </section>
 
@@ -86,66 +92,22 @@
     import { getAuth, signInAnonymously, GoogleAuthProvider, signInWithPopup, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/12.6.0/firebase-auth.js";
     import { getFirestore, collection, query, onSnapshot, addDoc, deleteDoc, doc, where, updateDoc, enableIndexedDbPersistence } from "https://www.gstatic.com/firebasejs/12.6.0/firebase-firestore.js";
 
-    // --- Firebase Config ---
-    const firebaseConfig = {
-      apiKey: "AIzaSyBNIUQpPPas83-Sk8Ux0LX270yZFYSIy0Q",
-      authDomain: "take-the-pills.firebaseapp.com",
-      projectId: "take-the-pills",
-      storageBucket: "take-the-pills.firebasestorage.app",
-      messagingSenderId: "485269196768",
-      appId: "1:485269196768:web:16ddcb88ade8ba404ae585",
-      measurementId: "G-EP5JVDCG1L"
-    };
-
-    // Initialize Firebase
+    const firebaseConfig = { /* your config here */ };
     const app = initializeApp(firebaseConfig);
     const auth = getAuth(app);
     const db = getFirestore(app);
+    enableIndexedDbPersistence(db).catch(err => console.warn("Persistence issue:", err));
 
-    // Enable offline persistence
-    enableIndexedDbPersistence(db).catch(err => {
-      if (err.code === 'failed-precondition') {
-        console.warn("Persistence failed: multiple tabs open");
-      } else if (err.code === 'unimplemented') {
-        console.warn("Persistence not supported by this browser");
-      }
-    });
+    let activeDateString = new Date().toISOString().split('T')[0]; // Default highlight = Today
 
-    // --- Status Banner Logic ---
+    // Status banner
     const statusBanner = document.getElementById('status-banner');
-    const showStatus = (message, colorClass) => {
-      statusBanner.textContent = message;
-      statusBanner.className = `fixed top-0 left-0 w-full text-center py-2 text-sm font-semibold ${colorClass}`;
-      statusBanner.classList.remove('hidden');
-    };
+    const showStatus = (msg, cls) => { statusBanner.textContent = msg; statusBanner.className = `fixed top-0 left-0 w-full text-center py-2 text-sm font-semibold ${cls}`; statusBanner.classList.remove('hidden'); };
     const hideStatus = () => statusBanner.classList.add('hidden');
+    window.addEventListener('online', () => { showStatus("Back online — syncing data…","bg-green-500 text-white"); setTimeout(hideStatus,3000); });
+    window.addEventListener('offline', () => { showStatus("You’re offline — changes will sync later","bg-yellow-500 text-black"); });
 
-    window.addEventListener('online', () => {
-      showStatus("Back online — syncing data…", "bg-green-500 text-white");
-      setTimeout(hideStatus, 3000);
-    });
-    window.addEventListener('offline', () => {
-      showStatus("You’re offline — changes will sync later", "bg-yellow-500 text-black");
-    });
-
-    // --- Authentication ---
-    onAuthStateChanged(auth, user => {
-      const userIdDisplay = document.getElementById('user-id-display');
-      if (user) {
-        userIdDisplay.textContent = `User ID: ${user.uid}`;
-        loadWeeklySummary(user.uid);
-      } else {
-        signInAnonymously(auth);
-      }
-    });
-
-    const googleLoginBtn = document.getElementById('google-login-btn');
-    googleLoginBtn.addEventListener('click', async () => {
-      const provider = new GoogleAuthProvider();
-      await signInWithPopup(auth, provider);
-    });
-
-    // --- Firestore Helpers ---
+    // Firestore helpers
     const getRemindersCollectionRef = (uid) => collection(db, `users/${uid}/reminders`);
 
     const addReminder = async (uid, name, date, time) => {
@@ -171,7 +133,7 @@
     // --- Daily Reminders Rendering ---
     const reminderListElement = document.getElementById('reminder-list');
     const scheduleTitle = document.getElementById('schedule-title');
-    let activeDateString = null;
+    let activeDateString = new Date().toISOString().split('T')[0]; // Default highlight = Today
 
     const renderDailyReminders = (dateString, reminders) => {
       reminderListElement.innerHTML = '';
@@ -204,9 +166,28 @@
       });
     };
 
+    // --- History Rendering ---
+    const historyListElement = document.getElementById('history-list');
+    const renderHistory = (takenReminders) => {
+      historyListElement.innerHTML = '';
+      if (takenReminders.length === 0) {
+        historyListElement.innerHTML = `<p class="text-center text-gray-400 py-2">No history yet.</p>`;
+        return;
+      }
+      takenReminders.forEach(rem => {
+        const item = document.createElement('div');
+        item.className = "flex justify-between items-center p-2 rounded-lg bg-white shadow-sm";
+        item.innerHTML = `
+          <span class="text-sm text-gray-700">${rem.name} — ${rem.date} ${rem.time}</span>
+          <span class="text-xs text-gray-500">Taken at ${rem.takenAt ? new Date(rem.takenAt).toLocaleString() : ''}</span>
+        `;
+        historyListElement.appendChild(item);
+      });
+    };
+
     // --- Weekly Summary ---
     const weeklySummaryElement = document.getElementById('weekly-summary');
-    const renderWeeklySummary = (remindersByDate) => {
+    const renderWeeklySummary = (remindersByDate, takenReminders) => {
       weeklySummaryElement.innerHTML = '';
       const today = new Date();
       for (let i = 0; i < 7; i++) {
@@ -230,12 +211,18 @@
           activeDateString = dateString;
           scheduleTitle.textContent = `Schedule for ${date.toDateString()}`;
           renderDailyReminders(dateString, dayReminders);
-          // refresh highlight
           document.querySelectorAll('.weekly-tile').forEach(t => t.classList.remove('active'));
           tile.classList.add('active');
         });
         weeklySummaryElement.appendChild(tile);
+
+        // Auto-load today's schedule on first render
+        if (i===0 && activeDateString===dateString) {
+          scheduleTitle.textContent = `Schedule for ${date.toDateString()}`;
+          renderDailyReminders(dateString, dayReminders);
+        }
       }
+      renderHistory(takenReminders);
     };
 
     const loadWeeklySummary = (uid) => {
@@ -248,14 +235,53 @@
       const q = query(ref, where("date", ">=", startDateString), where("date", "<=", endDateString));
       onSnapshot(q, snapshot => {
         const reminders = {};
+        const takenReminders = [];
         snapshot.forEach(docSnap => {
           const data = docSnap.data();
           if (!reminders[data.date]) reminders[data.date] = [];
           reminders[data.date].push({ id: docSnap.id, ...data });
+          if (data.isTaken) takenReminders.push({ id: docSnap.id, ...data });
         });
-        renderWeeklySummary(reminders);
+        renderWeeklySummary(reminders, takenReminders);
       });
     };
+
+    // --- Clear History ---
+    const clearHistoryBtn = document.getElementById('clear-history-btn');
+    clearHistoryBtn.addEventListener('click', async () => {
+      const user = auth.currentUser;
+      if (!user) return;
+      const ref = getRemindersCollectionRef(user.uid);
+      const q = query(ref, where("isTaken", "==", true));
+      onSnapshot(q, snapshot => {
+        snapshot.forEach(async docSnap => {
+          await deleteReminder(user.uid, docSnap.id);
+        });
+      });
+    });
+
+    // --- Download History (.txt) ---
+    const downloadHistoryBtn = document.getElementById('download-history-btn');
+    downloadHistoryBtn.addEventListener('click', async () => {
+      const user = auth.currentUser;
+      if (!user) return;
+      const ref = getRemindersCollectionRef(user.uid);
+      const q = query(ref, where("isTaken", "==", true));
+      onSnapshot(q, snapshot => {
+        let content = "History of Taken Meds\n\n";
+        snapshot.forEach(docSnap => {
+          const data = docSnap.data();
+          content += `${data.name} — ${data.date} ${data.time} | Taken at: ${data.takenAt}\n`;
+        });
+        const blob = new Blob([content], { type: "text/plain" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = "meds-history.txt";
+        a.click();
+        URL.revokeObjectURL(url);
+      });
+    });
 
     // --- Form Handling ---
     const form = document.getElementById('reminder-form');
@@ -272,3 +298,4 @@
   </script>
 </body>
 </html>
+
