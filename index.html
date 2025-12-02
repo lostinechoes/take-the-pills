@@ -1,858 +1,274 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Pill Time Reminder</title>
-    
-    <!-- 
-        PRODUCTION NOTICE: This CDN link is used for quick preview only.
-        To use Tailwind in production (as a "locally hosted file"), 
-        you must compile your project's CSS using the Tailwind CLI or PostCSS.
-        
-        The compiled CSS would then be linked like this (and the <script> removed):
-        <link rel="stylesheet" href="./dist/tailwind.css">
-    -->
-    <script src="https://cdn.tailwindcss.com"></script>
-    
-    <!-- Load Inter font -->
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
-    
-    <!-- PWA MANIFEST and ICON SETUP -->
-    <!-- The missing manifest file is now included below -->
-    <link rel="manifest" href="./manifest.json">
-    <meta name="theme-color" content="#8B5CF6">
-    <!-- Icon placeholder for PWA installation screen -->
-    <link rel="apple-touch-icon" href="https://placehold.co/192x192/8B5CF6/ffffff?text=Pill">
-
-    <style>
-        body {
-            font-family: 'Inter', sans-serif;
-            background-color: #f0f4f8; /* Soft light blue/gray */
-        }
-        .app-container {
-            max-width: 420px;
-            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
-        }
-        .reminder-card {
-            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
-            transition: all 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275); /* Springy transition */
-        }
-        .reminder-card:hover {
-            transform: translateY(-4px);
-            box-shadow: 0 8px 15px rgba(0, 0, 0, 0.1);
-        }
-        /* Style for the weekly summary tiles */
-        .weekly-tile {
-            cursor: pointer;
-            transition: all 0.2s;
-            border: 1px solid transparent;
-        }
-        .weekly-tile:not(.active):hover {
-            background-color: #eef2ff; /* light purple-50 */
-            border-color: #c7d2fe; /* light purple-300 */
-        }
-        .weekly-tile.active {
-            background-color: #8b5cf6; /* A more vibrant, modern purple */
-            color: white;
-            transform: scale(1.05);
-            box-shadow: 0 6px 10px -3px rgba(139, 92, 246, 0.5); /* Purple shadow */
-        }
-        .weekly-tile.active .text-gray-500,
-        .weekly-tile.active .pill-count {
-            color: white !important;
-        }
-        .pill-count {
-             transition: background-color 0.2s;
-        }
-        /* Custom scrollbar for better mobile feel */
-        #reminder-list::-webkit-scrollbar {
-            width: 6px;
-        }
-        #reminder-list::-webkit-scrollbar-thumb {
-            background-color: #c5c5c5;
-            border-radius: 10px;
-        }
-    </style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Pill Time Reminder</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
+  <link rel="manifest" href="./manifest.json">
+  <meta name="theme-color" content="#8B5CF6">
+  <link rel="apple-touch-icon" href="https://placehold.co/192x192/8B5CF6/ffffff?text=Pill">
+  <style>
+    body { font-family: 'Inter', sans-serif; background-color: #f0f4f8; }
+    .app-container { max-width: 420px; box-shadow: 0 10px 30px rgba(0,0,0,0.1); }
+    .reminder-card { box-shadow: 0 2px 8px rgba(0,0,0,0.05); transition: all 0.2s cubic-bezier(0.175,0.885,0.32,1.275); }
+    .reminder-card:hover { transform: translateY(-4px); box-shadow: 0 8px 15px rgba(0,0,0,0.1); }
+    .weekly-tile { cursor: pointer; transition: all 0.2s; border: 1px solid transparent; }
+    .weekly-tile:not(.active):hover { background-color: #eef2ff; border-color: #c7d2fe; }
+    .weekly-tile.active { background-color: #8b5cf6; color: white; transform: scale(1.05); box-shadow: 0 6px 10px -3px rgba(139,92,246,0.5); }
+    .weekly-tile.active .pill-count { color: white !important; }
+    #reminder-list::-webkit-scrollbar { width: 6px; }
+    #reminder-list::-webkit-scrollbar-thumb { background-color: #c5c5c5; border-radius: 10px; }
+  </style>
 </head>
 <body class="min-h-screen flex items-center justify-center p-4">
 
-    <div class="w-full bg-white rounded-2xl p-6 space-y-6 app-container">
-        <header class="text-center">
-            <h1 class="text-3xl font-extrabold text-purple-700 mb-1">Pill Time 💊</h1>
-            <p class="text-sm text-gray-500">Your scheduled medicine intake</p>
-            <p id="user-id-display" class="text-xs text-gray-300 mt-2">Authenticating user...</p>
-            
-            <!-- Google Sign-in Button (Visible only if anonymous/not permanently logged in) -->
-            <button id="google-login-btn" class="hidden mt-4 w-full flex items-center justify-center py-2 px-4 border border-gray-300 rounded-lg shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500 transition duration-150 ease-in-out">
-                <svg class="h-5 w-5 mr-2" viewBox="0 0 24 24" fill="currentColor">
-                    <path d="M21.35 12.04c0-.79-.07-1.54-.19-2.27H12v4.51h4.84c-.2 1.14-.84 2.1-1.74 2.74v2.54h3.28c1.92-1.77 3.03-4.38 3.03-7.72z" fill="#4285F4"/>
-                    <path d="M12 21c3.24 0 5.95-1.07 7.93-2.91l-3.28-2.54c-.9 0-2.07.65-2.65 1.76-1.55 1.48-3.4 2.45-5.65 2.45-3.15 0-5.83-2.01-6.79-4.71H2.03v2.54C3.89 19.92 7.63 21 12 21z" fill="#34A853"/>
-                    <path d="M5.21 15.69c-.2-.6-.31-1.23-.31-1.87s.11-1.27.31-1.87V9.41H2.03C1.3 11.04 1 12.52 1 14c0 1.48.3-2.96.9-4.59l3.28 2.27z" fill="#FBBC05"/>
-                    <path d="M12 7.73c1.77 0 3.32.61 4.54 1.78l2.94-2.94C17.95 3.19 15.24 2 12 2 7.63 2 3.89 3.08 2.03 4.41l3.18 2.32C6.17 6.72 8.85 7.73 12 7.73z" fill="#EA4335"/>
-                </svg>
-                Sign In with Google (Save Data)
-            </button>
-        </header>
+  <!-- Status Banner -->
+  <div id="status-banner" class="fixed top-0 left-0 w-full text-center py-2 text-sm font-semibold hidden"></div>
 
-        <!-- Loading Indicator -->
-        <div id="loading" class="text-center text-purple-500 font-medium hidden">
-            <div class="flex items-center justify-center space-x-2">
-                <svg class="animate-spin h-5 w-5 text-purple-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                </svg>
-                <span>Loading schedule...</span>
-            </div>
+  <div class="w-full bg-white rounded-2xl p-6 space-y-6 app-container">
+    <header class="text-center">
+      <h1 class="text-3xl font-extrabold text-purple-700 mb-1">Pill Time 💊</h1>
+      <p class="text-sm text-gray-500">Your scheduled medicine intake</p>
+      <p id="user-id-display" class="text-xs text-gray-300 mt-2">Authenticating user...</p>
+      <button id="google-login-btn" class="hidden mt-4 w-full flex items-center justify-center py-2 px-4 border border-gray-300 rounded-lg shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500 transition duration-150 ease-in-out">
+        <svg class="h-5 w-5 mr-2" viewBox="0 0 24 24" fill="currentColor">
+          <path d="M21.35 12.04c0-.79-.07-1.54-.19-2.27H12v4.51h4.84c-.2 1.14-.84 2.1-1.74 2.74v2.54h3.28c1.92-1.77 3.03-4.38 3.03-7.72z" fill="#4285F4"/>
+          <path d="M12 21c3.24 0 5.95-1.07 7.93-2.91l-3.28-2.54c-.9 0-2.07.65-2.65 1.76-1.55 1.48-3.4 2.45-5.65 2.45-3.15 0-5.83-2.01-6.79-4.71H2.03v2.54C3.89 19.92 7.63 21 12 21z" fill="#34A853"/>
+          <path d="M5.21 15.69c-.2-.6-.31-1.23-.31-1.87s.11-1.27.31-1.87V9.41H2.03C1.3 11.04 1 12.52 1 14c0 1.48.3-2.96.9-4.59l3.28 2.27z" fill="#FBBC05"/>
+          <path d="M12 7.73c1.77 0 3.32.61 4.54 1.78l2.94-2.94C17.95 3.19 15.24 2 12 2 7.63 2 3.89 3.08 2.03 4.41l3.18 2.32C6.17 6.72 8.85 7.73 12 7.73z" fill="#EA4335"/>
+        </svg>
+        Sign In with Google (Save Data)
+      </button>
+    </header>
+
+    <!-- Weekly Schedule -->
+    <section class="bg-gray-50 p-3 rounded-xl shadow-inner">
+      <h2 class="text-lg font-semibold text-gray-700 mb-3">Weekly At-a-Glance</h2>
+      <div id="weekly-summary" class="grid grid-cols-7 gap-2 overflow-x-auto"></div>
+    </section>
+
+    <!-- Detailed Reminder List -->
+    <section>
+      <h2 id="schedule-title" class="text-xl font-bold text-gray-700 mb-3">Schedule</h2>
+      <div id="reminder-list" class="space-y-3 max-h-80 overflow-y-auto p-1">
+        <p id="empty-state" class="text-center text-gray-400 py-4">Select a day above to view its schedule.</p>
+      </div>
+    </section>
+
+    <!-- Add Reminder Form -->
+    <form id="reminder-form" class="space-y-4 bg-white p-4 rounded-xl border border-gray-200 shadow-lg">
+      <h2 class="text-xl font-bold text-gray-700">Add New Intake</h2>
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <label for="medicine-name" class="block text-sm font-medium text-gray-600">Medicine Name</label>
+          <input type="text" id="medicine-name" required placeholder="e.g., Vitamin C" class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-purple-500 focus:border-purple-500 sm:text-sm">
         </div>
+        <div>
+          <label for="intake-date" class="block text-sm font-medium text-gray-600">Date</label>
+          <input type="date" id="intake-date" required class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-purple-500 focus:border-purple-500 sm:text-sm">
+        </div>
+      </div>
+      <div>
+        <label for="intake-time" class="block text-sm font-medium text-gray-600">Intake Time</label>
+        <input type="time" id="intake-time" required value="08:00" class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-purple-500 focus:border-purple-500 sm:text-sm">
+      </div>
+      <button type="submit" id="add-button" class="w-full flex justify-center py-2.5 px-4 border border-transparent rounded-lg shadow-md text-sm font-semibold text-white bg-purple-600 hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500 transition duration-150 ease-in-out">
+        Add Reminder
+      </button>
+    </form>
+  </div>
 
-        <!-- Weekly Schedule At-a-Glance -->
-        <section class="bg-gray-50 p-3 rounded-xl shadow-inner">
-            <h2 class="text-lg font-semibold text-gray-700 mb-3">Weekly At-a-Glance</h2>
-            <div id="weekly-summary" class="grid grid-cols-7 gap-2 overflow-x-auto">
-                <!-- Weekly tiles will be rendered here -->
-            </div>
-        </section>
+  <!-- Firebase SDKs -->
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/12.6.0/firebase-app.js";
+    import { getAuth, signInAnonymously, GoogleAuthProvider, signInWithPopup, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/12.6.0/firebase-auth.js";
+    import { getFirestore, collection, query, onSnapshot, addDoc, deleteDoc, doc, where, updateDoc, enableIndexedDbPersistence } from "https://www.gstatic.com/firebasejs/12.6.0/firebase-firestore.js";
 
-        <!-- Detailed Reminder List for Selected Day (MOVED TO BE MORE PROMINENT) -->
-        <section>
-            <h2 id="schedule-title" class="text-xl font-bold text-gray-700 mb-3">Schedule</h2>
-            <div id="reminder-list" class="space-y-3 max-h-80 overflow-y-auto p-1">
-                <!-- Reminders for the selected day will be rendered here -->
-                <p id="empty-state" class="text-center text-gray-400 py-4">Select a day above to view its schedule.</p>
-            </div>
-        </section>
+    // --- Firebase Config ---
+    const firebaseConfig = {
+      apiKey: "AIzaSyBNIUQpPPas83-Sk8Ux0LX270yZFYSIy0Q",
+      authDomain: "take-the-pills.firebaseapp.com",
+      projectId: "take-the-pills",
+      storageBucket: "take-the-pills.firebasestorage.app",
+      messagingSenderId: "485269196768",
+      appId: "1:485269196768:web:16ddcb88ade8ba404ae585",
+      measurementId: "G-EP5JVDCG1L"
+    };
 
-        <!-- Add Reminder Form -->
-        <form id="reminder-form" class="space-y-4 bg-white p-4 rounded-xl border border-gray-200 shadow-lg">
-            <h2 class="text-xl font-bold text-gray-700">Add New Intake</h2>
-            <div class="grid grid-cols-2 gap-3">
-                <div>
-                    <label for="medicine-name" class="block text-sm font-medium text-gray-600">Medicine Name</label>
-                    <input type="text" id="medicine-name" required placeholder="e.g., Vitamin C" class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-purple-500 focus:border-purple-500 sm:text-sm">
-                </div>
-                <div>
-                    <label for="intake-date" class="block text-sm font-medium text-gray-600">Date</label>
-                    <input type="date" id="intake-date" required class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-purple-500 focus:border-purple-500 sm:text-sm">
-                </div>
-            </div>
-            <div>
-                <label for="intake-time" class="block text-sm font-medium text-gray-600">Intake Time</label>
-                <!-- Time input for easy mobile selection -->
-                <input type="time" id="intake-time" required value="08:00" class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-purple-500 focus:border-purple-500 sm:text-sm">
-            </div>
-            <button type="submit" id="add-button" class="w-full flex justify-center py-2.5 px-4 border border-transparent rounded-lg shadow-md text-sm font-semibold text-white bg-purple-600 hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500 transition duration-150 ease-in-out">
-                Add Reminder
+    // Initialize Firebase
+    const app = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
+    const db = getFirestore(app);
+
+    // Enable offline persistence
+    enableIndexedDbPersistence(db).catch(err => {
+      if (err.code === 'failed-precondition') {
+        console.warn("Persistence failed: multiple tabs open");
+      } else if (err.code === 'unimplemented') {
+        console.warn("Persistence not supported by this browser");
+      }
+    });
+
+    // --- Status Banner Logic ---
+    const statusBanner = document.getElementById('status-banner');
+    const showStatus = (message, colorClass) => {
+      statusBanner.textContent = message;
+      statusBanner.className = `fixed top-0 left-0 w-full text-center py-2 text-sm font-semibold ${colorClass}`;
+      statusBanner.classList.remove('hidden');
+    };
+    const hideStatus = () => statusBanner.classList.add('hidden');
+
+    window.addEventListener('online', () => {
+      showStatus("Back online — syncing data…", "bg-green-500 text-white");
+      setTimeout(hideStatus, 3000);
+    });
+    window.addEventListener('offline', () => {
+      showStatus("You’re offline — changes will sync later", "bg-yellow-500 text-black");
+    });
+
+    // --- Authentication ---
+    onAuthStateChanged(auth, user => {
+      const userIdDisplay = document.getElementById('user-id-display');
+      if (user) {
+        userIdDisplay.textContent = `User ID: ${user.uid}`;
+        loadWeeklySummary(user.uid);
+      } else {
+        signInAnonymously(auth);
+      }
+    });
+
+    const googleLoginBtn = document.getElementById('google-login-btn');
+    googleLoginBtn.addEventListener('click', async () => {
+      const provider = new GoogleAuthProvider();
+      await signInWithPopup(auth, provider);
+    });
+
+    // --- Firestore Helpers ---
+    const getRemindersCollectionRef = (uid) => collection(db, `users/${uid}/reminders`);
+
+    const addReminder = async (uid, name, date, time) => {
+      await addDoc(getRemindersCollectionRef(uid), {
+        name, date, time,
+        isTaken: false,
+        takenAt: null,
+        created_at: new Date().toISOString()
+      });
+    };
+
+    const toggleTakenStatus = async (uid, docId, currentStatus) => {
+      await updateDoc(doc(getRemindersCollectionRef(uid), docId), {
+        isTaken: !currentStatus,
+        takenAt: !currentStatus ? new Date().toISOString() : null
+      });
+    };
+
+    const deleteReminder = async (uid, docId) => {
+      await deleteDoc(doc(getRemindersCollectionRef(uid), docId));
+    };
+
+    // --- Daily Reminders Rendering ---
+    const reminderListElement = document.getElementById('reminder-list');
+    const scheduleTitle = document.getElementById('schedule-title');
+    let activeDateString = null;
+
+    const renderDailyReminders = (dateString, reminders) => {
+      reminderListElement.innerHTML = '';
+      if (reminders.length === 0) {
+        reminderListElement.innerHTML = `<p class="text-center text-gray-400 py-4">No reminders for this day.</p>`;
+        return;
+      }
+      reminders.forEach(rem => {
+        const card = document.createElement('div');
+        card.className = "reminder-card flex justify-between items-center p-3 rounded-lg bg-gray-50";
+        card.innerHTML = `
+          <div>
+            <p class="font-semibold text-gray-700">${rem.name}</p>
+            <p class="text-xs text-gray-500">${rem.time}</p>
+          </div>
+          <div class="flex space-x-2">
+            <button class="px-2 py-1 text-xs rounded ${rem.isTaken ? 'bg-green-500 text-white' : 'bg-purple-500 text-white'}">
+              ${rem.isTaken ? 'Taken' : 'Mark Taken'}
             </button>
-        </form>
-
-    </div>
-
-    <!-- Firebase SDKs -->
-    <script type="module">
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/12.6.0/firebase-app.js";
-        import { 
-            getAuth, 
-            signInAnonymously,
-            signInWithCustomToken,
-            onAuthStateChanged, // NEW: Listener for state changes
-            GoogleAuthProvider, // NEW: Google Provider
-            signInWithPopup // NEW: Google Sign-in method
-        } from "https://www.gstatic.com/firebasejs/12.6.0/firebase-auth.js";
-        import { 
-            getFirestore, 
-            collection, 
-            query, 
-            onSnapshot, 
-            addDoc, 
-            deleteDoc, 
-            doc,
-            where,
-            updateDoc,
-            setLogLevel 
-        } from "https://www.gstatic.com/firebasejs/12.6.0/firebase-firestore.js";
-
-        // --- ENVIRONMENT VARIABLES (MANDATORY USE) ---
-        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
-        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
-        
-        // --- USER CONFIGURATION BLOCK (FOR NON-CANVAS ENVIRONMENTS LIKE GITHUB) ---
-        // To run this app outside the Canvas, get your Firebase project's config object
-        // and paste it below. You must enable Anonymous and Google Sign-In methods in your project.
-        // If running in the Canvas, the system-provided config will override this.
-        const USER_FIREBASE_CONFIG = {
-            apiKey: "AIzaSyBNIUQpPPas83-Sk8Ux0LX270yZFYSIy0Q",
-            authDomain: "take-the-pills.firebaseapp.com",
-            projectId: "take-the-pills",
-            storageBucket: "take-the-pills.firebasestorage.app",
-            messagingSenderId: "485269196768",
-            appId: "1:485269196768:web:16ddcb88ade8ba404ae585",
-            measurementId: "G-EP5JVDCG1L"
-        };
-        // --- END USER CONFIGURATION BLOCK ---
-
-        let firebaseConfig = null;
-        let isSystemConfig = false;
-        
-        try {
-            const systemConfigString = typeof __firebase_config !== 'undefined' ? __firebase_config : '{}';
-            const systemConfig = JSON.parse(systemConfigString);
-            
-            if (systemConfig && systemConfig.projectId) {
-                // System config found (Running in Canvas)
-                firebaseConfig = systemConfig;
-                isSystemConfig = true;
-                console.log("Using system-provided Firebase configuration.");
-            } else if (USER_FIREBASE_CONFIG && USER_FIREBASE_CONFIG.projectId) {
-                // System config missing, but user provided one (Running on GitHub/Local)
-                firebaseConfig = USER_FIREBASE_CONFIG;
-                console.log("Using user-provided Firebase configuration.");
-            } else {
-                // No configuration found
-                console.log("System configuration missing and no user config provided. Firebase will be disabled gracefully.");
-            }
-        } catch (e) {
-            console.error("Failed to process Firebase config.", e);
-        }
-        // --- END ENVIRONMENT VARIABLES ---
-
-        // UI Elements
-        const loadingElement = document.getElementById('loading');
-        const reminderListElement = document.getElementById('reminder-list');
-        const emptyStateElement = document.getElementById('empty-state');
-        const userIdDisplay = document.getElementById('user-id-display');
-        const form = document.getElementById('reminder-form');
-        const addButton = document.getElementById('add-button');
-        const intakeDateInput = document.getElementById('intake-date');
-        const scheduleTitle = document.getElementById('schedule-title');
-        const weeklySummaryElement = document.getElementById('weekly-summary');
-        const googleLoginBtn = document.getElementById('google-login-btn'); 
-
-        // Firebase instances
-        let db = null; 
-        let auth = null; 
-        let isFirebaseActive = false;
-        let userId = null;
-        let detailedUnsubscribe = null; 
-        let isAuthListenerInitialized = false; 
-
-        // Local state
-        let currentScheduleDateString = null;
-
-        // --- Utility Functions ---
-
-        /**
-         * Converts a Date object to a YYYY-MM-DD string.
-         */
-        const formatDateString = (date) => {
-            return date.toISOString().split('T')[0];
-        };
-
-        /**
-         * Converts a Date object to a Day Name (e.g., 'Mon', 'Tue').
-         */
-        const formatDayName = (date) => {
-            return date.toLocaleDateString('en-US', { weekday: 'short' });
-        };
-        
-        /**
-         * Gets the current time in HH:MM (24-hour) format.
-         */
-        const getCurrentTimeHHMM = () => {
-            const now = new Date();
-            const hours = String(now.getHours()).padStart(2, '0');
-            const minutes = String(now.getMinutes()).padStart(2, '0');
-            return `${hours}:${minutes}`;
-        };
-
-        /**
-         * Sets the schedule date and triggers the detailed view reload.
-         */
-        const setDetailedScheduleDate = (dateString) => {
-            currentScheduleDateString = dateString;
-            const date = new Date(dateString);
-            const formattedDate = date.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
-            scheduleTitle.textContent = `Schedule for ${formattedDate}`;
-
-            loadDetailedReminders();
-            
-            document.querySelectorAll('.weekly-tile').forEach(tile => {
-                if (tile.getAttribute('data-date') === dateString) {
-                    tile.classList.add('active');
-                } else {
-                    tile.classList.remove('active');
-                }
-            });
-        };
-
-        /**
-         * Shows the loading indicator.
-         */
-        const showLoading = () => {
-            loadingElement.classList.remove('hidden');
-            addButton.disabled = true;
-        };
-
-        /**
-         * Hides the loading indicator.
-         */
-        const hideLoading = () => {
-            loadingElement.classList.add('hidden');
-            if (isFirebaseActive) {
-                addButton.disabled = false;
-            }
-        };
-        
-        // Helper function to reset the Google Sign-in button content
-        const resetGoogleLoginButton = () => {
-            googleLoginBtn.disabled = false;
-            // Full reset including the SVG to ensure the icon and text are correctly displayed
-            googleLoginBtn.innerHTML = `
-                <svg class="h-5 w-5 mr-2" viewBox="0 0 24 24" fill="currentColor">
-                    <path d="M21.35 12.04c0-.79-.07-1.54-.19-2.27H12v4.51h4.84c-.2 1.14-.84 2.1-1.74 2.74v2.54h3.28c1.92-1.77 3.03-4.38 3.03-7.72z" fill="#4285F4"/>
-                    <path d="M12 21c3.24 0 5.95-1.07 7.93-2.91l-3.28-2.54c-.9 0-2.07.65-2.65 1.76-1.55 1.48-3.4 2.45-5.65 2.45-3.15 0-5.83-2.01-6.79-4.71H2.03v2.54C3.89 19.92 7.63 21 12 21z" fill="#34A853"/>
-                    <path d="M5.21 15.69c-.2-.6-.31-1.23-.31-1.87s.11-1.27.31-1.87V9.41H2.03C1.3 11.04 1 12.52 1 14c0 1.48.3-2.96.9-4.59l3.28 2.27z" fill="#FBBC05"/>
-                    <path d="M12 7.73c1.77 0 3.32.61 4.54 1.78l2.94-2.94C17.95 3.19 15.24 2 12 2 7.63 2 3.89 3.08 2.03 4.41l3.18 2.32C6.17 6.72 8.85 7.73 12 7.73z" fill="#EA4335"/>
-                </svg>
-                Sign In with Google (Save Data)
-            `;
-            googleLoginBtn.classList.remove('hidden');
-        };
-
-        // --- Firebase Setup and Authentication ---
-
-        /**
-         * Handles the authentication state change, which runs on startup and sign-in/out.
-         */
-        const handleAuthStateChange = (user) => {
-            // Unsubscribe from old listener if present
-            if (detailedUnsubscribe) {
-                detailedUnsubscribe();
-                detailedUnsubscribe = null;
-            }
-            
-            showLoading();
-
-            if (user) {
-                // User is signed in (either via Custom Token, Anonymous, or Google)
-                userId = user.uid;
-                isFirebaseActive = true;
-                
-                const isPermanent = user.isAnonymous === false;
-                const authStatus = isPermanent ? '(Permanent)' : '(Temporary)';
-                userIdDisplay.textContent = `User ID: ${userId} ${authStatus}`;
-                
-                // Hide Google login button if permanently signed in
-                googleLoginBtn.classList.add('hidden'); 
-
-                // Load initial data (only run once after auth is settled)
-                if (!isAuthListenerInitialized) {
-                    intakeDateInput.value = formatDateString(new Date());
-                    setDetailedScheduleDate(formatDateString(new Date()));
-                    loadWeeklySummary();
-                    isAuthListenerInitialized = true;
-                }
-                
-            } else {
-                // No user is actively signed in or user signed out.
-                userId = null;
-                isFirebaseActive = false;
-                userIdDisplay.textContent = 'Session Expired or Not Logged In';
-                
-                // If the listener has already run once, and we end up here, re-try anonymous sign-in
-                if (isAuthListenerInitialized && auth) {
-                     signInAnonymously(auth).then(cred => {
-                        userId = cred.user.uid;
-                        isFirebaseActive = true;
-                        userIdDisplay.textContent = `User ID: ${userId} (New Anonymous)`;
-                        resetGoogleLoginButton(); // Show button to upgrade session
-                    }).catch(error => {
-                        console.error("Anonymous sign-in failed:", error);
-                        // Fallback to UUID if all Auth methods fail
-                        userId = crypto.randomUUID(); 
-                        userIdDisplay.textContent = `User ID: ${userId} (UUID Fallback)`;
-                    });
-                }
-            }
-            
-            // Show login button if user is temporary/anonymous
-            if (user && user.isAnonymous) {
-                resetGoogleLoginButton(); // Ensure button is shown and reset
-            }
-
-            hideLoading();
-        };
-
-        /**
-         * Initializes Firebase and sets up the Auth State Listener.
-         */
-        async function setupFirebase() {
-            try {
-                setLogLevel('Debug'); 
-                
-                // CRITICAL CHECK: Ensure a valid system configuration was loaded or provided
-                if (!firebaseConfig || !firebaseConfig.projectId) {
-                    console.error("--- DEBUG INFO: Firebase Config Status ---");
-                    // console.error("Raw __firebase_config string (or system config):", configString); // Removed for cleaner non-Canvas environment
-                    console.error("Used firebaseConfig object:", firebaseConfig); 
-                    console.error("----------------------------------------");
-                    
-                    isFirebaseActive = false;
-                    reminderListElement.innerHTML = `<p class="text-center text-red-500 py-4">Database features disabled: Configuration missing/invalid. Add your config to USER_FIREBASE_CONFIG.</p>`;
-                    addButton.textContent = 'Config Failed';
-                    addButton.disabled = true;
-                    userIdDisplay.textContent = 'Config Failed: Database Disconnected';
-                    hideLoading();
-                    return; 
-                }
-
-                // Initialize Firebase App, Auth, and Firestore
-                const app = initializeApp(firebaseConfig);
-                auth = getAuth(app);
-                db = getFirestore(app);
-                
-                // 1. Set up the permanent authentication state listener
-                onAuthStateChanged(auth, handleAuthStateChange);
-                
-                // 2. Perform the initial sign-in for the environment
-                try {
-                    // We only use the initialAuthToken if we are running in the system environment
-                    // AND if the token is present.
-                    if (isSystemConfig && initialAuthToken) {
-                        // Use environment token (Canvas)
-                        await signInWithCustomToken(auth, initialAuthToken);
-                        console.log("Signed in with custom token.");
-                    } else {
-                        // Fallback to anonymous sign-in (required for GitHub/local run or if token is missing)
-                        await signInAnonymously(auth);
-                        console.log("Signed in anonymously.");
-                    }
-                } catch (authError) {
-                    console.warn("Initial Firebase Auth failed (Custom/Anonymous):", authError.message);
-                    // The onAuthStateChanged listener will handle the resulting unauthenticated state
-                }
-
-            } catch (error) {
-                console.error("Firebase Initialization failed:", error);
-                
-                isFirebaseActive = false;
-                
-                reminderListElement.innerHTML = `<p class="text-center text-red-500 py-4">Firebase connection failed! Check console for details.</p>`;
-                addButton.textContent = 'Connection Failed';
-                addButton.disabled = true;
-
-                userIdDisplay.textContent = 'Connection Failed: Check console';
-                hideLoading();
-            }
-        }
-
-        /**
-         * Signs the user in using Google pop-up authentication.
-         */
-        const signInWithGoogle = async () => {
-            if (!auth) {
-                console.error("Firebase Auth not initialized.");
-                return;
-            }
-            
-            googleLoginBtn.disabled = true;
-            googleLoginBtn.textContent = 'Signing in...';
-
-            try {
-                const provider = new GoogleAuthProvider();
-                await signInWithPopup(auth, provider);
-                // The onAuthStateChanged listener will handle the success and data migration
-                console.log("Successfully signed in with Google.");
-            } catch (error) {
-                console.error("Google Sign-in failed:", error);
-            } finally {
-                // Reset the button's visual state on completion or failure
-                resetGoogleLoginButton(); 
-            }
-        };
-
-        /**
-         * Gets the reference to the user's reminders collection in Firestore.
-         */
-        const getRemindersCollectionRef = () => {
-            if (!isFirebaseActive || !db || !userId) {
-                console.warn("Attempted Firestore operation while Firebase is not active or user ID is missing.");
-                return null;
-            }
-            // Private path: /artifacts/{appId}/users/{userId}/reminders
-            // This ensures data is local to the signed-in user, satisfying the user's request.
-            return collection(db, `artifacts/${appId}/users/${userId}/reminders`);
-        }
-
-        // --- Data Operations (Remains unchanged - uses the determined 'userId') ---
-
-        /**
-         * Adds a new reminder to Firestore.
-         */
-        const addReminder = async (name, date, time) => {
-            const collectionRef = getRemindersCollectionRef();
-            if (!collectionRef) {
-                userIdDisplay.textContent = 'Data Saving Disabled: No active Firestore connection.'; 
-                return;
-            }
-
-            try {
-                addButton.textContent = 'Saving...';
-                addButton.disabled = true;
-
-                await addDoc(collectionRef, {
-                    name: name,
-                    date: date, // YYYY-MM-DD
-                    time: time, // HH:MM (Scheduled time)
-                    isTaken: false, 
-                    takenAt: null, 
-                    created_at: new Date().toISOString(), 
-                });
-
-                document.getElementById('medicine-name').value = '';
-                document.getElementById('intake-time').value = '08:00';
-            } catch (error) {
-                console.error("Error adding reminder:", error);
-                userIdDisplay.textContent = 'Could not save reminder. Check console.';
-            } finally {
-                addButton.textContent = 'Add Reminder';
-                addButton.disabled = false;
-            }
-        };
-
-        /**
-         * Toggles the 'isTaken' status of a reminder and records the 'takenAt' time.
-         */
-        const toggleTakenStatus = async (docId, currentStatus) => {
-            const collectionRef = getRemindersCollectionRef();
-            if (!collectionRef) return;
-
-            const docRef = doc(collectionRef, docId);
-            const newStatus = !currentStatus;
-            
-            const takenTime = newStatus ? new Date().toISOString() : null;
-
-            try {
-                await updateDoc(docRef, {
-                    isTaken: newStatus,
-                    takenAt: takenTime
-                });
-            } catch (error) {
-                console.error("Error toggling taken status:", error);
-            }
-        };
-
-
-        /**
-         * Deletes a reminder from Firestore.
-         */
-        const deleteReminder = async (docId) => {
-            const collectionRef = getRemindersCollectionRef();
-            if (!collectionRef) return;
-
-            try {
-                await deleteDoc(doc(collectionRef, docId));
-            } catch (error) {
-                console.error("Error deleting reminder:", error);
-            }
-        };
-
-        // --- Weekly Summary Logic (Remains unchanged) ---
-
-        /**
-         * Sets up the real-time listener for the next 7 days of reminders.
-         */
-        const loadWeeklySummary = () => {
-            const collectionRef = getRemindersCollectionRef();
-            if (!collectionRef) {
-                renderWeeklySummary({});
-                return;
-            }
-
-            const today = new Date();
-            const startDateString = formatDateString(today);
-
-            const endDate = new Date();
-            endDate.setDate(today.getDate() + 6);
-            const endDateString = formatDateString(endDate);
-            
-            const q = query(
-                collectionRef,
-                where("date", ">=", startDateString),
-                where("date", "<=", endDateString)
-            );
-
-            onSnapshot(q, (snapshot) => {
-                const allReminders = [];
-                snapshot.forEach((doc) => {
-                    allReminders.push({ id: doc.id, ...doc.data() });
-                });
-
-                const weeklyReminders = {};
-                
-                allReminders.forEach((data) => {
-                    const dateKey = data.date;
-                    if (!weeklyReminders[dateKey]) {
-                        weeklyReminders[dateKey] = [];
-                    }
-                    weeklyReminders[dateKey].push(data);
-                });
-                
-                renderWeeklySummary(weeklyReminders);
-
-            }, (error) => {
-                console.error("Error listening to weekly summary:", error);
-            });
-        };
-        
-        /**
-         * Renders the weekly schedule tiles.
-         */
-        const renderWeeklySummary = (remindersByDate) => {
-            weeklySummaryElement.innerHTML = '';
-            const today = new Date();
-
-            for (let i = 0; i < 7; i++) {
-                const date = new Date(today);
-                date.setDate(today.getDate() + i);
-                const dateString = formatDateString(date);
-                const dayName = formatDayName(date);
-                
-                const dayReminders = remindersByDate[dateString] || [];
-                const totalCount = dayReminders.length;
-                const takenCount = dayReminders.filter(r => r.isTaken).length;
-                
-                let countText = totalCount > 0 ? `${takenCount}/${totalCount}` : '0';
-
-                let dayLabel = dayName;
-                if (i === 0) dayLabel = 'Today';
-                if (i === 1) dayLabel = 'Tmrw';
-
-                const isActive = currentScheduleDateString === dateString;
-                const activeClass = isActive ? 'active' : '';
-                
-                const pillColorClass = (totalCount > 0 && takenCount === totalCount) ? 'bg-green-500' : 
-                                       (totalCount > 0) ? 'bg-purple-500' : 'bg-gray-300';
-
-                const tile = document.createElement('div');
-                tile.className = `weekly-tile flex flex-col items-center p-2 border border-gray-200 rounded-xl text-xs font-medium ${activeClass} bg-white`;
-                tile.setAttribute('data-date', dateString);
-                tile.onclick = () => setDetailedScheduleDate(dateString); 
-
-                tile.innerHTML = `
-                    <span class="text-xs ${isActive ? 'text-white' : 'text-gray-500'}">${dayLabel}</span>
-                    <span class="text-lg font-extrabold mt-0.5">${date.getDate()}</span>
-                    <span class="pill-count mt-1 px-2 py-0.5 rounded-full text-white text-xs font-bold ${pillColorClass}">
-                        ${countText}
-                    </span>
-                `;
-                weeklySummaryElement.appendChild(tile);
-            }
-        };
-
-
-        // --- Detailed Schedule Logic (Remains unchanged) ---
-
-        /**
-         * Sets up the real-time listener for the detailed reminders list for the selected day.
-         */
-        const loadDetailedReminders = () => {
-            if (detailedUnsubscribe) {
-                detailedUnsubscribe();
-                detailedUnsubscribe = null;
-            }
-
-            if (!currentScheduleDateString) return;
-            
-            const collectionRef = getRemindersCollectionRef();
-            
-            if (!collectionRef) return; 
-
-            const q = query(
-                collectionRef, 
-                where("date", "==", currentScheduleDateString)
-            );
-
-            detailedUnsubscribe = onSnapshot(q, (snapshot) => {
-                const reminders = [];
-                snapshot.forEach((doc) => {
-                    reminders.push({ id: doc.id, ...doc.data() });
-                });
-                
-                // === SORTING LOGIC: Prioritize Upcoming for Today ===
-                reminders.sort((a, b) => {
-                    const isToday = currentScheduleDateString === formatDateString(new Date());
-                    const nowTime = getCurrentTimeHHMM();
-
-                    const isPastA = a.time <= nowTime;
-                    const isPastB = b.time <= nowTime;
-
-                    const isTakenA = a.isTaken;
-                    const isTakenB = b.isTaken; 
-                    
-                    let priorityA = 0;
-                    let priorityB = 0;
-
-                    if (isToday) {
-                        if (!isPastA && !isTakenA) {
-                            priorityA = 1; 
-                        }
-                        if (!isPastB && !isTakenB) {
-                            priorityB = 1; 
-                        }
-                    }
-
-                    const prioritySort = priorityB - priorityA; 
-                    if (prioritySort !== 0) {
-                        return prioritySort;
-                    }
-                    
-                    return a.time.localeCompare(b.time);
-                });
-                // === END SORTING LOGIC ===
-
-                renderDetailedReminders(reminders);
-            }, (error) => {
-                console.error("Error listening to detailed reminders:", error);
-                reminderListElement.innerHTML = `<p class="text-center text-red-500 py-4">Failed to load schedule. (Check console for details)</p>`;
-            });
-        };
-
-        /**
-         * Renders the detailed list of reminders to the DOM.
-         */
-        const renderDetailedReminders = (reminders) => {
-            reminderListElement.innerHTML = '';
-            
-            if (reminders.length === 0) {
-                emptyStateElement.classList.remove('hidden');
-                reminderListElement.appendChild(emptyStateElement);
-                return;
-            }
-
-            emptyStateElement.classList.add('hidden');
-
-            reminders.forEach(reminder => {
-                const docId = reminder.id;
-                const isTaken = reminder.isTaken || false;
-                const isToday = currentScheduleDateString === formatDateString(new Date());
-                
-                const isPast = isToday && reminder.time <= getCurrentTimeHHMM() && !isTaken;
-
-                let cardClass = 'bg-white border-l-purple-400';
-                let timeClass = 'text-purple-500';
-                let actionText = 'Mark as Taken';
-
-                if (isTaken) {
-                    cardClass = 'bg-green-50 border-l-green-400 opacity-80';
-                    timeClass = 'text-green-600';
-                    actionText = 'Undo Take';
-                } else if (isPast) {
-                    cardClass = 'bg-red-50 border-l-red-400';
-                    timeClass = 'text-red-500 font-bold';
-                    actionText = 'Mark as Taken';
-                }
-                
-                let takenTimeDisplay = '';
-                if (isTaken && reminder.takenAt) {
-                    try {
-                        const takenDate = new Date(reminder.takenAt);
-                        const timeOptions = { hour: '2-digit', minute: '2-digit', hour12: true };
-                        takenTimeDisplay = `(Taken ${takenDate.toLocaleTimeString('en-US', timeOptions)})`;
-                    } catch (e) {
-                        takenTimeDisplay = '(Taken)';
-                    }
-                }
-
-
-                const reminderCard = document.createElement('div');
-                reminderCard.className = `reminder-card flex items-center justify-between p-4 border-l-4 rounded-xl ${cardClass}`;
-                reminderCard.setAttribute('data-id', docId);
-
-                const contentDiv = document.createElement('div');
-                contentDiv.className = 'flex-grow';
-                contentDiv.innerHTML = `
-                    <p class="text-lg font-semibold text-gray-800">${reminder.name}</p>
-                    <p class="text-sm ${timeClass} font-mono mt-0.5">
-                        ${reminder.time} ${isPast && !isTaken ? '(Overdue)' : ''}
-                        <span class="text-xs text-gray-500">${takenTimeDisplay}</span>
-                    </p>
-                `;
-
-                const actionsDiv = document.createElement('div');
-                actionsDiv.className = 'flex items-center space-x-2 ml-4';
-
-                const takeButton = document.createElement('button');
-                takeButton.textContent = actionText;
-                takeButton.className = `px-3 py-1 text-xs font-semibold rounded-full shadow-sm transition-colors ${isTaken 
-                    ? 'bg-green-500 text-white hover:bg-green-600' 
-                    : 'bg-purple-100 text-purple-700 hover:bg-purple-200'}`;
-                takeButton.onclick = () => {
-                    toggleTakenStatus(docId, isTaken);
-                };
-
-                const deleteButton = document.createElement('button');
-                deleteButton.innerHTML = `
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-red-400 hover:text-red-600 transition" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                    </svg>
-                `;
-                deleteButton.title = 'Delete Reminder';
-                deleteButton.onclick = () => deleteReminder(docId);
-
-                actionsDiv.appendChild(takeButton);
-                actionsDiv.appendChild(deleteButton);
-                
-                reminderCard.appendChild(contentDiv);
-                reminderCard.appendChild(actionsDiv);
-                
-                reminderListElement.appendChild(reminderCard);
-            });
-        };
-        
-        // --- PWA Service Worker Registration (Remains unchanged) ---
-        const registerServiceWorker = () => {
-            if ('serviceWorker' in navigator) {
-                if (window.location.protocol !== 'http:' && window.location.protocol !== 'https:') {
-                    console.warn('Service Workers are not supported in this environment (blob/file protocol). skipping registration.');
-                    return;
-                }
-
-                window.addEventListener('load', () => {
-                    navigator.serviceWorker.register('./service-worker.js', { scope: './' })
-                        .then(registration => {
-                            console.log('ServiceWorker registration successful with scope: ', registration.scope);
-                        })
-                        .catch(error => {
-                            console.log('ServiceWorker registration failed: ', error);
-                        });
-                });
-            }
-        };
-
-
-        // --- Event Listeners ---
-
-        form.addEventListener('submit', (e) => {
-            e.preventDefault();
-            const name = document.getElementById('medicine-name').value.trim();
-            const date = document.getElementById('intake-date').value;
-            const time = document.getElementById('intake-time').value;
-
-            if (name && date && time) {
-                addReminder(name, date, time);
-            }
+            <button class="px-2 py-1 text-xs rounded bg-red-500 text-white">Delete</button>
+          </div>
+        `;
+        card.querySelector('button').addEventListener('click', () => {
+          toggleTakenStatus(auth.currentUser.uid, rem.id, rem.isTaken);
         });
-        
-        // Google login button listener
-        googleLoginBtn.addEventListener('click', signInWithGoogle);
-
-        // --- Start Application ---
-        document.addEventListener('DOMContentLoaded', () => {
-            setupFirebase();
-            registerServiceWorker();
+        card.querySelectorAll('button')[1].addEventListener('click', () => {
+          deleteReminder(auth.currentUser.uid, rem.id);
         });
+        reminderListElement.appendChild(card);
+      });
+    };
 
-    </script>
+    // --- Weekly Summary ---
+    const weeklySummaryElement = document.getElementById('weekly-summary');
+    const renderWeeklySummary = (remindersByDate) => {
+      weeklySummaryElement.innerHTML = '';
+      const today = new Date();
+      for (let i = 0; i < 7; i++) {
+        const date = new Date(today);
+        date.setDate(today.getDate() + i);
+        const dateString = date.toISOString().split('T')[0];
+        const dayName = date.toLocaleDateString('en-US', { weekday: 'short' });
+        const dayReminders = remindersByDate[dateString] || [];
+        const totalCount = dayReminders.length;
+        const takenCount = dayReminders.filter(r => r.isTaken).length;
+        const countText = totalCount > 0 ? `${takenCount}/${totalCount}` : '0';
+        const pillColorClass = (totalCount > 0 && takenCount === totalCount) ? 'bg-green-500' : 
+                               (totalCount > 0) ? 'bg-purple-500' : 'bg-gray-300';
+        const tile = document.createElement('div');
+        tile.className = `weekly-tile flex flex-col items-center p-2 border border-gray-200 rounded-xl text-xs font-medium bg-white ${activeDateString===dateString?'active':''}`;
+        tile.innerHTML = `
+          <span>${i===0?'Today':i===1?'Tmrw':dayName}</span>
+          <span class="pill-count px-2 mt-1 rounded-full ${pillColorClass} text-white">${countText}</span>
+        `;
+        tile.addEventListener('click', () => {
+          activeDateString = dateString;
+          scheduleTitle.textContent = `Schedule for ${date.toDateString()}`;
+          renderDailyReminders(dateString, dayReminders);
+          // refresh highlight
+          document.querySelectorAll('.weekly-tile').forEach(t => t.classList.remove('active'));
+          tile.classList.add('active');
+        });
+        weeklySummaryElement.appendChild(tile);
+      }
+    };
+
+    const loadWeeklySummary = (uid) => {
+      const ref = getRemindersCollectionRef(uid);
+      const today = new Date();
+      const startDateString = today.toISOString().split('T')[0];
+      const endDate = new Date();
+      endDate.setDate(today.getDate() + 6);
+      const endDateString = endDate.toISOString().split('T')[0];
+      const q = query(ref, where("date", ">=", startDateString), where("date", "<=", endDateString));
+      onSnapshot(q, snapshot => {
+        const reminders = {};
+        snapshot.forEach(docSnap => {
+          const data = docSnap.data();
+          if (!reminders[data.date]) reminders[data.date] = [];
+          reminders[data.date].push({ id: docSnap.id, ...data });
+        });
+        renderWeeklySummary(reminders);
+      });
+    };
+
+    // --- Form Handling ---
+    const form = document.getElementById('reminder-form');
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const user = auth.currentUser;
+      if (!user) return;
+      const name = document.getElementById('medicine-name').value;
+      const date = document.getElementById('intake-date').value;
+      const time = document.getElementById('intake-time').value;
+      await addReminder(user.uid, name, date, time);
+      form.reset();
+    });
+  </script>
 </body>
 </html>
