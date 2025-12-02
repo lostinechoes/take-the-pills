@@ -96,8 +96,7 @@
   import { getDocs } from "https://www.gstatic.com/firebasejs/12.6.0/firebase-firestore.js";
 
   const app = initializeApp(firebaseConfig);
-  // ... rest of your Firebase setup
-
+  
     const auth = getAuth(app);
     const db = getFirestore(app);
     enableIndexedDbPersistence(db).catch(err => console.warn("Persistence issue:", err));
@@ -137,8 +136,7 @@
     // --- Daily Reminders Rendering ---
     const reminderListElement = document.getElementById('reminder-list');
     const scheduleTitle = document.getElementById('schedule-title');
-    let activeDateString = new Date().toISOString().split('T')[0]; // Default highlight = Today
-
+    
     const renderDailyReminders = (dateString, reminders) => {
       reminderListElement.innerHTML = '';
       if (reminders.length === 0) {
@@ -271,12 +269,13 @@
       if (!user) return;
       const ref = getRemindersCollectionRef(user.uid);
       const q = query(ref, where("isTaken", "==", true));
-      onSnapshot(q, snapshot => {
+      const snapshot = await getDocs(q);
         let content = "History of Taken Meds\n\n";
         snapshot.forEach(docSnap => {
           const data = docSnap.data();
           content += `${data.name} — ${data.date} ${data.time} | Taken at: ${data.takenAt}\n`;
         });
+
         const blob = new Blob([content], { type: "text/plain" });
         const url = URL.createObjectURL(blob);
         const a = document.createElement("a");
@@ -309,6 +308,7 @@
   </script>
 </body>
 </html>
+
 
 
 
