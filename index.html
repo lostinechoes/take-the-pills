@@ -8,7 +8,8 @@
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
   <link rel="manifest" href="./manifest.json">
   <meta name="theme-color" content="#8B5CF6">
-  <link rel="apple-touch-icon" href="https://placehold.co/192x192/8B5CF6/ffffff?text=Pill">
+  <link rel="apple-touch-icon" href="./icons/icon-192.png">
+
   <style>
     body { font-family: 'Inter', sans-serif; background-color: #f0f4f8; }
     .app-container { max-width: 420px; box-shadow: 0 10px 30px rgba(0,0,0,0.1); }
@@ -88,12 +89,33 @@
 
   <!-- Firebase SDKs -->
   <script type="module">
-    import { initializeApp } from "https://www.gstatic.com/firebasejs/12.6.0/firebase-app.js";
-    import { getAuth, signInAnonymously, GoogleAuthProvider, signInWithPopup, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/12.6.0/firebase-auth.js";
-    import { getFirestore, collection, query, onSnapshot, addDoc, deleteDoc, doc, where, updateDoc, enableIndexedDbPersistence } from "https://www.gstatic.com/firebasejs/12.6.0/firebase-firestore.js";
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/12.6.0/firebase-app.js";
+  import { firebaseConfig } from "./scripts/firebase-config.js";
+  import {
+  getAuth,
+  signInAnonymously,
+  GoogleAuthProvider,
+  signInWithPopup,
+  onAuthStateChanged
+} from "https://www.gstatic.com/firebasejs/12.6.0/firebase-auth.js";
 
-    const firebaseConfig = { /* your config here */ };
-    const app = initializeApp(firebaseConfig);
+import {
+  getFirestore,
+  collection,
+  query,
+  onSnapshot,
+  addDoc,
+  deleteDoc,
+  doc,
+  where,
+  updateDoc,
+  enableIndexedDbPersistence
+} from "https://www.gstatic.com/firebasejs/12.6.0/firebase-firestore.js";
+
+
+  const app = initializeApp(firebaseConfig);
+  // ... rest of your Firebase setup
+
     const auth = getAuth(app);
     const db = getFirestore(app);
     enableIndexedDbPersistence(db).catch(err => console.warn("Persistence issue:", err));
@@ -247,18 +269,18 @@
     };
 
     // --- Clear History ---
-    const clearHistoryBtn = document.getElementById('clear-history-btn');
+    import { getDocs } from "https://www.gstatic.com/firebasejs/12.6.0/firebase-firestore.js";
     clearHistoryBtn.addEventListener('click', async () => {
       const user = auth.currentUser;
       if (!user) return;
       const ref = getRemindersCollectionRef(user.uid);
       const q = query(ref, where("isTaken", "==", true));
-      onSnapshot(q, snapshot => {
-        snapshot.forEach(async docSnap => {
-          await deleteReminder(user.uid, docSnap.id);
-        });
+      const snapshot = await getDocs(q);
+      snapshot.forEach(async docSnap => {
+        await deleteReminder(user.uid, docSnap.id);
       });
     });
+
 
     // --- Download History (.txt) ---
     const downloadHistoryBtn = document.getElementById('download-history-btn');
@@ -304,5 +326,6 @@
 </script>
 </body>
 </html>
+
 
 
